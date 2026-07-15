@@ -606,6 +606,7 @@ function App() {
     setUserCreationError(null);
     setCreationSummary(null);
     setCargueResultDetails([]);
+    fetchCargues();
   };
 
   const handleSelectCargue = async () => {
