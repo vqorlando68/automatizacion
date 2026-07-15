@@ -1,0 +1,359 @@
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,100..900;1,100..900&display=swap');
+
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  /* Font Family */
+  --font-sans: 'Montserrat', system-ui, -apple-system, sans-serif;
+
+  /* --- BRAND PALETTE (LIGHT MODE BASE) --- */
+  
+  /* Core Base Colors */
+  --brand-base-default: #00aae1;
+  --brand-base-default-dark: #0196d4;
+  --brand-base-black: #000000;
+  --brand-base-white: #ffffff;
+  --brand-base-disabled-bg: #e5e7eb;
+  --brand-base-disabled-text: #9ca3af;
+
+  /* Typography Colors */
+  --text-primary: #033d59;
+  --text-secondary: #035476;
+  --text-tertiary: #00678f;
+  --text-black: #000000;
+  --text-white: #ffffff;
+  --text-seguridad: #00aae1;
+  --text-creatividad: #ff7a39;
+  --text-proteccion: #0fecaa;
+  --text-salud: #01ae6c;
+
+  /* Inputs Colors & Backgrounds */
+  --input-filled: #033d59;
+  --input-placeholder: #035476;
+  --input-caption: #033d59;
+  --input-label: #033d59;
+  --input-active: #ff7a39;
+  --input-active-hover: #fe5611;
+  --input-bg-white: #ffffff;
+  --input-bg-disabled: #d1d5db;
+  --input-border: #e2e8eb;
+  --input-hover-option: #effaff;
+
+  /* Button Colors */
+  --button-bg-primary: #00aae1;
+  --button-bg-primary-hover: #0196d4;
+  --button-text-basic: #033d59;
+  --button-text-basic-hover: #023147;
+  --button-bg-secondary: #effaff;
+  --button-bg-secondary-hover: #0196d4;
+  --button-text-white: #ffffff;
+  --button-text-primary: #00aae1;
+  --button-text-primary-hover: #0196d4;
+  --button-text-disabled: #9ca3af;
+  --button-text-outline-brand: #0177ab;
+  --button-text-outline-brand-hover: #0177ab;
+  --button-text-outline-basic: #033d59;
+  --button-text-outline-basic-hover: #033d59;
+  --button-bg-tertiary: #ffffff;
+  --button-bg-tertiary-hover: #f9fafb;
+  --button-bg-outline-brand: #0177ab;
+  --button-bg-outline-brand-bg-hover: #effaff;
+  --button-bg-outline-brand-hover: #0177ab;
+  --button-bg-outline-basic: #e2e8eb;
+  --button-bg-outline-basic-bg-hover: #f9fafb;
+  --button-bg-outline-basic-hover: #033d59;
+  --button-bg-disabled: #e5e7eb;
+
+  /* Feedback Colors */
+  --feedback-success-base: #01ae6c;
+  --feedback-success-base-hover: #017c50;
+  --feedback-success-light: #ebfef4;
+  --feedback-success-light-hover: #d0fbe2;
+  --feedback-info-base: #0284c7;
+  --feedback-info-base-hover: #0369a1;
+  --feedback-info-light: #f0f9ff;
+  --feedback-info-light-hover: #e0f2fe;
+  --feedback-warning-base: #fbbf24;
+  --feedback-warning-base-hover: #f59e0b;
+  --feedback-warning-light: #fffbeb;
+  --feedback-warning-light-hover: #fef3c7;
+  --feedback-error-base: #e11d48;
+  --feedback-error-base-hover: #be123c;
+  --feedback-error-light: #fff1f2;
+  --feedback-error-light-hover: #ffe4e6;
+  --feedback-basic-base: #033d59;
+  --feedback-basic-base-hover: #035476;
+  --feedback-basic-light: #effaff;
+  --feedback-basic-light-hover: #dff4ff;
+
+  /* Icons */
+  --ico-brand-primary: #00aae1;
+  --ico-brand-primary-hover: #0196d4;
+  --ico-brand-disabled: #9ca3af;
+  --ico-basic-primary: #033d59;
+  --ico-basic-primary-hover: #023147;
+  --ico-basic-disabled: #9ca3af;
+  --ico-secundary-secundary: #033d59;
+  --ico-secundary-secundary-hover: #023147;
+  --ico-secundary-disabled: #9ca3af;
+  --ico-feedback-success-base: #01ae6c;
+  --ico-feedback-success-base-hover: #017c50;
+  --ico-feedback-success-disabled: #9ca3af;
+  --ico-feedback-info-base: #0284c7;
+  --ico-feedback-info-base-hover: #0369a1;
+  --ico-feedback-info-disabled: #9ca3af;
+  --ico-feedback-warning-base: #fbbf24;
+  --ico-feedback-warning-base-hover: #f59e0b;
+  --ico-feedback-warning-disabled: #9ca3af;
+  --ico-feedback-error-base: #e11d48;
+  --ico-feedback-error-base-hover: #be123c;
+  --ico-feedback-error-disabled: #9ca3af;
+  --ico-basic-white: #ffffff;
+  --ico-basic-black: #000000;
+  --ico-basic-help-ico: #023147;
+
+  /* Border Style Tokens */
+  --border-basic: #d0d5dd;
+  --border-complementario-1: #ececee;
+  --border-complementario-2: #ffffff;
+  --border-complementario-3: #d0d5dd;
+
+  /* Dynamic CSS Variable Mappings (Vite HMR/Tailwind compatible) */
+  --indigo-50: #effaff;
+  --indigo-100: #dff4ff;
+  --indigo-200: #b6ecff;
+  --indigo-300: #75dfff;
+  --indigo-400: #2bd0ff;
+  --indigo-500: #0196d4;
+  --indigo-600: #00aae1;
+  --indigo-700: #0177ab;
+  --indigo-800: #00638d;
+  --indigo-900: #055374;
+  --indigo-950: #04354d;
+
+  --slate-50: #f9fafb;
+  --slate-100: #ececee;
+  --slate-200: #e2e8eb;
+  --slate-300: #d0d5dd;
+  --slate-400: #00678f;
+  --slate-500: #00678f;
+  --slate-600: #035476;
+  --slate-700: #035476;
+  --slate-800: #033d59;
+  --slate-900: #033d59;
+  --slate-950: #033d59;
+}
+
+.dark {
+  /* Typography Overrides */
+  --text-primary: #effaff;
+  --text-secondary: #b6ecff;
+  --text-tertiary: #75dfff;
+
+  /* Button Overrides */
+  --button-text-basic: #effaff;
+  --button-text-basic-hover: #ffffff;
+  --button-bg-secondary: #04354d;
+
+  /* Input Overrides */
+  --input-filled: #effaff;
+  --input-placeholder: #0b74a6;
+  --input-caption: #b6ecff;
+  --input-label: #effaff;
+  --input-border: #054463;
+
+  /* Brand overrides for dark mode (Cyan & deep blue contrast) */
+  --indigo-50: #04354d;
+  --indigo-100: #055374;
+  --indigo-200: #00638d;
+  --indigo-300: #0177ab;
+  --indigo-400: #00aae1;
+  --indigo-500: #2bd0ff;
+  --indigo-600: #00b8f5;
+  --indigo-700: #75dfff;
+  --indigo-800: #b6ecff;
+  --indigo-900: #dff4ff;
+  --indigo-950: #effaff;
+
+  /* Slate overrides for dark mode (Navy medical palette) */
+  --slate-50: #ffffff;
+  --slate-100: #effaff;
+  --slate-200: #effaff;
+  --slate-300: #b6ecff;
+  --slate-400: #75dfff;
+  --slate-500: #00aae1;
+  --slate-600: #0b74a6;
+  --slate-700: #075c85;
+  --slate-800: #054463;
+  --slate-900: #032e43;
+  --slate-950: #02141f;
+}
+
+@theme {
+  --font-sans: var(--font-sans);
+
+  /* --- BRAND COMPONENT STYLES --- */
+  --color-brand-base-default: var(--brand-base-default);
+  --color-brand-base-default-dark: var(--brand-base-default-dark);
+  --color-brand-base-black: var(--brand-base-black);
+  --color-brand-base-white: var(--brand-base-white);
+  --color-brand-base-disabled-bg: var(--brand-base-disabled-bg);
+  --color-brand-base-disabled-text: var(--brand-base-disabled-text);
+
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-tertiary: var(--text-tertiary);
+  --color-text-black: var(--text-black);
+  --color-text-white: var(--text-white);
+  --color-text-seguridad: var(--text-seguridad);
+  --color-text-creatividad: var(--text-creatividad);
+  --color-text-proteccion: var(--text-proteccion);
+  --color-text-salud: var(--text-salud);
+
+  --color-input-filled: var(--input-filled);
+  --color-input-placeholder: var(--input-placeholder);
+  --color-input-caption: var(--input-caption);
+  --color-input-label: var(--input-label);
+  --color-input-active: var(--input-active);
+  --color-input-active-hover: var(--input-active-hover);
+  --color-input-bg-white: var(--input-bg-white);
+  --color-input-bg-disabled: var(--input-bg-disabled);
+  --color-input-border: var(--input-border);
+  --color-input-hover-option: var(--input-hover-option);
+
+  --color-button-bg-primary: var(--button-bg-primary);
+  --color-button-bg-primary-hover: var(--button-bg-primary-hover);
+  --color-button-text-basic: var(--button-text-basic);
+  --color-button-text-basic-hover: var(--button-text-basic-hover);
+  --color-button-bg-secondary: var(--button-bg-secondary);
+  --color-button-bg-secondary-hover: var(--button-bg-secondary-hover);
+  --color-button-text-white: var(--button-text-white);
+  --color-button-text-primary: var(--button-text-primary);
+  --color-button-text-primary-hover: var(--button-text-primary-hover);
+  --color-button-text-disabled: var(--button-text-disabled);
+  --color-button-text-outline-brand: var(--button-text-outline-brand);
+  --color-button-text-outline-brand-hover: var(--button-text-outline-brand-hover);
+  --color-button-text-outline-basic: var(--button-text-outline-basic);
+  --color-button-text-outline-basic-hover: var(--button-text-outline-basic-hover);
+  --color-button-bg-tertiary: var(--button-bg-tertiary);
+  --color-button-bg-tertiary-hover: var(--button-bg-tertiary-hover);
+  --color-button-bg-outline-brand: var(--button-bg-outline-brand);
+  --color-button-bg-outline-brand-bg-hover: var(--button-bg-outline-brand-bg-hover);
+  --color-button-bg-outline-brand-hover: var(--button-bg-outline-brand-hover);
+  --color-button-bg-outline-basic: var(--button-bg-outline-basic);
+  --color-button-bg-outline-basic-bg-hover: var(--button-bg-outline-basic-bg-hover);
+  --color-button-bg-outline-basic-hover: var(--button-bg-outline-basic-hover);
+  --color-button-bg-disabled: var(--button-bg-disabled);
+
+  --color-feedback-success-base: var(--feedback-success-base);
+  --color-feedback-success-base-hover: var(--feedback-success-base-hover);
+  --color-feedback-success-light: var(--feedback-success-light);
+  --color-feedback-success-light-hover: var(--feedback-success-light-hover);
+  --color-feedback-info-base: var(--feedback-info-base);
+  --color-feedback-info-base-hover: var(--feedback-info-base-hover);
+  --color-feedback-info-light: var(--feedback-info-light);
+  --color-feedback-info-light-hover: var(--feedback-info-light-hover);
+  --color-feedback-warning-base: var(--feedback-warning-base);
+  --color-feedback-warning-base-hover: var(--feedback-warning-base-hover);
+  --color-feedback-warning-light: var(--feedback-warning-light);
+  --color-feedback-warning-light-hover: var(--feedback-warning-light-hover);
+  --color-feedback-error-base: var(--feedback-error-base);
+  --color-feedback-error-base-hover: var(--feedback-error-base-hover);
+  --color-feedback-error-light: var(--feedback-error-light);
+  --color-feedback-error-light-hover: var(--feedback-error-light-hover);
+  --color-feedback-basic-base: var(--feedback-basic-base);
+  --color-feedback-basic-base-hover: var(--feedback-basic-base-hover);
+  --color-feedback-basic-light: var(--feedback-basic-light);
+  --color-feedback-basic-light-hover: var(--feedback-basic-light-hover);
+
+  --color-ico-brand-primary: var(--ico-brand-primary);
+  --color-ico-brand-primary-hover: var(--ico-brand-primary-hover);
+  --color-ico-brand-disabled: var(--ico-brand-disabled);
+  --color-ico-basic-primary: var(--ico-basic-primary);
+  --color-ico-basic-primary-hover: var(--ico-basic-primary-hover);
+  --color-ico-basic-disabled: var(--ico-basic-disabled);
+  --color-ico-secundary-secundary: var(--ico-secundary-secundary);
+  --color-ico-secundary-secundary-hover: var(--ico-secundary-secundary-hover);
+  --color-ico-secundary-disabled: var(--ico-secundary-disabled);
+  --color-ico-feedback-success-base: var(--ico-feedback-success-base);
+  --color-ico-feedback-success-base-hover: var(--ico-feedback-success-base-hover);
+  --color-ico-feedback-success-disabled: var(--ico-feedback-success-disabled);
+  --color-ico-feedback-info-base: var(--ico-feedback-info-base);
+  --color-ico-feedback-info-base-hover: var(--ico-feedback-info-base-hover);
+  --color-ico-feedback-info-disabled: var(--ico-feedback-info-disabled);
+  --color-ico-feedback-warning-base: var(--ico-feedback-warning-base);
+  --color-ico-feedback-warning-base-hover: var(--ico-feedback-warning-base-hover);
+  --color-ico-feedback-warning-disabled: var(--ico-feedback-warning-disabled);
+  --color-ico-feedback-error-base: var(--ico-feedback-error-base);
+  --color-ico-feedback-error-base-hover: var(--ico-feedback-error-base-hover);
+  --color-ico-feedback-error-disabled: var(--ico-feedback-error-disabled);
+  --color-ico-basic-white: var(--ico-basic-white);
+  --color-ico-basic-black: var(--ico-basic-black);
+  --color-ico-basic-help-ico: var(--ico-basic-help-ico);
+
+  --color-border-basic: var(--border-basic);
+  --color-border-complementario-1: var(--border-complementario-1);
+  --color-border-complementario-2: var(--border-complementario-2);
+  --color-border-complementario-3: var(--border-complementario-3);
+
+  /* --- LIGHT MODE & DARK MODE MAPPED OVERRIDES --- */
+  --color-indigo-50: var(--indigo-50);
+  --color-indigo-100: var(--indigo-100);
+  --color-indigo-200: var(--indigo-200);
+  --color-indigo-300: var(--indigo-300);
+  --color-indigo-400: var(--indigo-400);
+  --color-indigo-500: var(--indigo-500);
+  --color-indigo-600: var(--indigo-600);
+  --color-indigo-700: var(--indigo-700);
+  --color-indigo-800: var(--indigo-800);
+  --color-indigo-900: var(--indigo-900);
+  --color-indigo-950: var(--indigo-950);
+
+  --color-slate-50: var(--slate-50);
+  --color-slate-100: var(--slate-100);
+  --color-slate-200: var(--slate-200);
+  --color-slate-300: var(--slate-300);
+  --color-slate-400: var(--slate-400);
+  --color-slate-500: var(--slate-500);
+  --color-slate-600: var(--slate-600);
+  --color-slate-700: var(--slate-700);
+  --color-slate-800: var(--slate-800);
+  --color-slate-900: var(--slate-900);
+  --color-slate-950: var(--slate-950);
+
+  /* Success Overrides */
+  --color-emerald-50: #ebfef4;
+  --color-emerald-100: #d0fbe2;
+  --color-emerald-500: #01ae6c;
+  --color-emerald-600: #017c50;
+  
+  --color-green-50: #ebfef4;
+  --color-green-100: #d0fbe2;
+  --color-green-500: #01ae6c;
+  --color-green-600: #017c50;
+
+  /* Warning Overrides */
+  --color-amber-50: #fffbeb;
+  --color-amber-100: #fef3c7;
+  --color-amber-500: #fbbf24;
+  --color-amber-600: #f59e0b;
+
+  /* Error Overrides */
+  --color-red-50: #fff1f2;
+  --color-red-100: #ffe4e6;
+  --color-red-500: #e11d48;
+  --color-red-600: #be123c;
+
+  /* Border Radii Custom Mappings */
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-2xl: 16px;
+  --radius-3xl: 24px;
+  --radius-4xl: 32px;
+  --radius-full: 1000px;
+}
