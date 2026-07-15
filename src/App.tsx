@@ -45,6 +45,7 @@ const TKR_USUARIOS_COLUMNS: Omit<FieldMapping, 'columna_origen'>[] = [
   { campo_destino: 'clave', label: 'Clave / Contraseña', tipo: 'VARCHAR2' },
   { campo_destino: 'identificacion', label: 'Número Identificación', tipo: 'VARCHAR2' },
   { campo_destino: 'id_tipo_identificacion', label: 'ID Tipo Identificación', tipo: 'NUMBER' },
+  { campo_destino: 'id_genero', label: 'ID Género', tipo: 'NUMBER' },
   { campo_destino: 'correo_electronico', label: 'Correo Electrónico', tipo: 'VARCHAR2' },
   { campo_destino: 'telefono', label: 'Teléfono Principal', tipo: 'VARCHAR2' },
   { campo_destino: 'telefono_2', label: 'Teléfono Secundario', tipo: 'VARCHAR2' },
@@ -141,7 +142,8 @@ const FK_TABLES_MAP: Record<string, string> = {
   id_medio: 'TKR_MEDIOS',
   id_plan_asegurador: 'TKR_PLANES_ASEGURADORES',
   id_regimen_aseguramiento: 'TKR_REGIMEN_ASEGURAMIENTO',
-  id_tipo_identificacion: 'TKR_TIPOS_IDENTIFICACION'
+  id_tipo_identificacion: 'TKR_TIPOS_IDENTIFICACION',
+  id_genero: 'TKR_GENEROS'
 };
 
 const buildParsedRow = (rawLine: string, columns: any[], lineNumber: number): ParsedRow => {

@@ -8,7 +8,8 @@ const ALLOWED_TABLES = [
   'TKR_MEDIOS',
   'TKR_PLANES_ASEGURADORES',
   'TKR_REGIMEN_ASEGURAMIENTO',
-  'TKR_TIPOS_IDENTIFICACION'
+  'TKR_TIPOS_IDENTIFICACION',
+  'TKR_GENEROS'
 ];
 
 const MOCK_DATA: Record<string, Array<Record<string, any>>> = {
@@ -56,6 +57,12 @@ const MOCK_DATA: Record<string, Array<Record<string, any>>> = {
     { ID: 3, NOMBRE: 'Cédula de Extranjería', ABREVIATURA: 'CE' },
     { ID: 4, NOMBRE: 'Pasaporte', ABREVIATURA: 'PA' },
     { ID: 5, NOMBRE: 'Registro Civil', ABREVIATURA: 'RC' },
+  ],
+  TKR_GENEROS: [
+    { ID: 1, NOMBRE: 'Femenino', ABREVIATURA: 'F' },
+    { ID: 2, NOMBRE: 'Masculino', ABREVIATURA: 'M' },
+    { ID: 3, NOMBRE: 'No Binario', ABREVIATURA: 'NB' },
+    { ID: 4, NOMBRE: 'Prefiero no decirlo', ABREVIATURA: 'O' },
   ],
 };
 
