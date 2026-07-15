@@ -303,6 +303,53 @@ function App() {
     );
   }, [modalTableRows, modalTableSearchTerm]);
 
+  // Modal para visualizar valores únicos de una columna
+  const [isUniqueModalOpen, setIsUniqueModalOpen] = useState(false);
+  const [uniqueModalColName, setUniqueModalColName] = useState('');
+  const [uniqueModalFieldLabel, setUniqueModalFieldLabel] = useState('');
+  const [uniqueModalSearchTerm, setUniqueModalSearchTerm] = useState('');
+  const [copiedValue, setCopiedValue] = useState<string | null>(null);
+
+  const openUniqueValuesModal = (colName: string, fieldLabel: string) => {
+    setUniqueModalColName(colName);
+    setUniqueModalFieldLabel(fieldLabel);
+    setIsUniqueModalOpen(true);
+    setUniqueModalSearchTerm('');
+    setCopiedValue(null);
+  };
+
+  const handleCopyValue = (value: string) => {
+    navigator.clipboard.writeText(value);
+    setCopiedValue(value);
+    setTimeout(() => {
+      setCopiedValue(null);
+    }, 1500);
+  };
+
+  const uniqueColValues = useMemo(() => {
+    if (!uniqueModalColName) return [];
+
+    const idx = Number(uniqueModalColName.replace('columna_', ''));
+    const key = `c${idx}`;
+
+    const counts: Record<string, number> = {};
+    cargueDetailRows.forEach(row => {
+      const val = String(row[key] ?? '').trim();
+      counts[val] = (counts[val] || 0) + 1;
+    });
+
+    const uniqueList = Object.entries(counts).map(([value, count]) => ({
+      value,
+      count
+    }));
+
+    uniqueList.sort((a, b) => b.count - a.count || a.value.localeCompare(b.value));
+
+    if (!uniqueModalSearchTerm.trim()) return uniqueList;
+    const term = uniqueModalSearchTerm.toLowerCase();
+    return uniqueList.filter(item => item.value.toLowerCase().includes(term));
+  }, [cargueDetailRows, uniqueModalColName, uniqueModalSearchTerm]);
+
   const [creatingUsers, setCreatingUsers] = useState(false);
   const [userCreationError, setUserCreationError] = useState<string | null>(null);
   const [modoCarga, setModoCarga] = useState<'TODO' | 'PARCIAL'>('PARCIAL');
@@ -1700,9 +1747,25 @@ function App() {
                                   <div className="w-1.5 h-6 rounded bg-purple-600" />
                                   <div>
                                     <span className="text-xs font-bold text-slate-800 dark:text-slate-200">{mapping.label}</span>
-                                    <span className="text-[10px] text-slate-400 dark:text-slate-500 block font-mono">
-                                      {isConstant ? 'Valor Constante / Fijo' : `Mapeado a: ${getColumnLabel(mapping.columna_origen)}`}
-                                    </span>
+                                    {isConstant ? (
+                                      <span className="text-[10px] text-slate-400 dark:text-slate-500 block font-mono">
+                                        Valor Constante / Fijo
+                                      </span>
+                                    ) : (
+                                      <div className="flex items-center gap-2 mt-0.5">
+                                        <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono">
+                                          Mapeado a: {getColumnLabel(mapping.columna_origen)}
+                                        </span>
+                                        <button
+                                          type="button"
+                                          onClick={() => openUniqueValuesModal(mapping.columna_origen, mapping.label)}
+                                          className="text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 font-bold text-[9px] uppercase tracking-wide flex items-center gap-0.5 transition-all cursor-pointer hover:underline"
+                                          title="Ver valores únicos en el archivo"
+                                        >
+                                          📋 Ver únicos
+                                        </button>
+                                      </div>
+                                    )}
                                   </div>
                                 </div>
 
@@ -2496,6 +2559,119 @@ function App() {
               <button
                 type="button"
                 onClick={() => setIsTableModalOpen(false)}
+                className="px-4 py-2 bg-slate-800 dark:bg-slate-200 hover:bg-slate-700 dark:hover:bg-white text-white dark:text-slate-900 font-bold text-xs rounded-xl shadow-xs transition-all cursor-pointer"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Valores Únicos */}
+      {isUniqueModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl w-full max-w-md flex flex-col max-h-[80vh] animate-in fade-in zoom-in duration-200">
+            {/* Cabecera */}
+            <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-850 flex justify-between items-center bg-slate-50 dark:bg-slate-900/50 rounded-t-2xl">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <span>📋 Valores Únicos:</span>
+                  <code className="text-xs bg-purple-100 dark:bg-purple-950/45 text-purple-700 dark:text-purple-300 px-1.5 py-0.5 rounded font-mono">
+                    {getColumnLabel(uniqueModalColName)}
+                  </code>
+                </h3>
+                <p className="text-[10px] text-slate-400 mt-0.5">Asociado al campo: <span className="font-bold text-slate-550 dark:text-slate-350">{uniqueModalFieldLabel}</span></p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsUniqueModalOpen(false)}
+                className="text-slate-450 hover:text-slate-600 dark:hover:text-slate-250 transition-colors p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer text-lg"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Buscador */}
+            <div className="px-6 py-3 border-b border-slate-100 dark:border-slate-850 bg-white dark:bg-slate-950">
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="🔎 Filtrar valores..."
+                  value={uniqueModalSearchTerm}
+                  onChange={(e) => setUniqueModalSearchTerm(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-880 dark:text-slate-100 focus:outline-none focus:border-indigo-500"
+                />
+                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs pointer-events-none">
+                  🔍
+                </span>
+                {uniqueModalSearchTerm && (
+                  <button
+                    onClick={() => setUniqueModalSearchTerm('')}
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-650 dark:hover:text-slate-200 text-xs cursor-pointer"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Contenido / Listado */}
+            <div className="p-6 overflow-y-auto flex-1 bg-slate-50/50 dark:bg-slate-950/20">
+              {uniqueColValues.length === 0 ? (
+                <div className="text-center py-8 text-slate-455 text-xs">
+                  Ningún valor coincide con el filtro.
+                </div>
+              ) : (
+                <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-xs bg-white dark:bg-slate-900">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 text-slate-555 dark:text-slate-400 uppercase tracking-wider font-bold text-[9px]">
+                        <th className="px-4 py-2">Valor</th>
+                        <th className="px-4 py-2 w-24 text-right">Repeticiones</th>
+                        <th className="px-4 py-2 w-16 text-center">Acción</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-150 dark:divide-slate-800">
+                      {uniqueColValues.map((item, idx) => (
+                        <tr
+                          key={idx}
+                          className="hover:bg-slate-50/60 dark:hover:bg-slate-850/40 text-slate-800 dark:text-slate-200 transition-colors"
+                        >
+                          <td className="px-4 py-2.5 font-mono truncate max-w-[200px]" title={item.value}>
+                            {item.value === '' ? (
+                              <span className="text-slate-400 italic text-[10px]">&lt;Vacío&gt;</span>
+                            ) : (
+                              item.value
+                            )}
+                          </td>
+                          <td className="px-4 py-2.5 text-right font-medium text-slate-500 dark:text-slate-400">
+                            {item.count}
+                          </td>
+                          <td className="px-4 py-2.5 text-center">
+                            <button
+                              type="button"
+                              onClick={() => handleCopyValue(item.value)}
+                              className="px-2 py-0.5 text-[9px] bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-350 rounded border border-slate-200/50 dark:border-slate-700/50 cursor-pointer active:scale-95 transition-all font-bold"
+                              title="Copiar valor"
+                            >
+                              {copiedValue === item.value ? '✅ Copiado' : '📋 Copiar'}
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* Pie */}
+            <div className="px-6 py-4 border-t border-slate-100 dark:border-slate-850 flex justify-between items-center bg-slate-50 dark:bg-slate-900/50 rounded-b-2xl text-[10px] text-slate-400">
+              <span>{uniqueColValues.length} valores únicos encontrados</span>
+              <button
+                type="button"
+                onClick={() => setIsUniqueModalOpen(false)}
                 className="px-4 py-2 bg-slate-800 dark:bg-slate-200 hover:bg-slate-700 dark:hover:bg-white text-white dark:text-slate-900 font-bold text-xs rounded-xl shadow-xs transition-all cursor-pointer"
               >
                 Cerrar
