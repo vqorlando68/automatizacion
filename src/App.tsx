@@ -1896,38 +1896,39 @@ function App() {
                                   {currentType === 'tabla' && (
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                       <div>
-                                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wide mb-1">Tabla Relacionada (FK)</label>
-                                        <div className="flex gap-1.5 items-center">
-                                          <select
-                                            value={mapping.homologacion?.tabla_destino || ''}
-                                            onChange={(e) => {
-                                              handleMappingChange(mapping.campo_destino, 'homologacion', {
-                                                ...mapping.homologacion,
-                                                tabla_destino: e.target.value
-                                              });
-                                            }}
-                                            className="flex-1 px-2 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-850 dark:text-slate-100 focus:outline-none"
-                                          >
-                                            <option value="">-- Seleccione Tabla --</option>
-                                            <option value="TKR_CIUDADES">TKR_CIUDADES (Ciudades)</option>
-                                            <option value="TKR_BARRIOS">TKR_BARRIOS (Barrios)</option>
-                                            <option value="TKR_PERFILES_DOCTOR">TKR_PERFILES_DOCTOR (Perfiles Doctor)</option>
-                                            <option value="TKR_MEDIOS">TKR_MEDIOS (Medios de Captura)</option>
-                                            <option value="TKR_PLANES_ASEGURADORES">TKR_PLANES_ASEGURADORES (Aseguradoras)</option>
-                                            <option value="TKR_REGIMEN_ASEGURAMIENTO">TKR_REGIMEN_ASEGURAMIENTO (Regímenes)</option>
-                                            <option value="TKR_TIPOS_IDENTIFICACION">TKR_TIPOS_IDENTIFICACION (Tipos ID)</option>
-                                          </select>
+                                        <div className="flex justify-between items-center mb-1">
+                                          <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wide">Tabla Relacionada (FK)</label>
                                           {mapping.homologacion?.tabla_destino && (
                                             <button
                                               type="button"
                                               onClick={() => openForeignTableModal(mapping.homologacion?.tabla_destino || '')}
-                                              className="px-2 py-1.5 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-900/50 hover:bg-indigo-100 dark:hover:bg-indigo-900/80 text-indigo-600 dark:text-indigo-400 font-bold text-xs rounded-lg shadow-2xs transition-all cursor-pointer active:scale-95 whitespace-nowrap"
+                                              className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 font-bold text-[9px] uppercase tracking-wide flex items-center gap-1 transition-all cursor-pointer"
                                               title="Ver registros de la tabla"
                                             >
-                                              👁️ Ver
+                                              👁️ Ver Tabla
                                             </button>
                                           )}
                                         </div>
+                                        <select
+                                          value={mapping.homologacion?.tabla_destino || ''}
+                                          onChange={(e) => {
+                                            handleMappingChange(mapping.campo_destino, 'homologacion', {
+                                              ...mapping.homologacion,
+                                              tabla_destino: e.target.value
+                                            });
+                                          }}
+                                          className="w-full px-2 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-850 dark:text-slate-100 focus:outline-none"
+                                        >
+                                          <option value="">-- Seleccione Tabla --</option>
+                                          <option value="TKR_CIUDADES">TKR_CIUDADES (Ciudades)</option>
+                                          <option value="TKR_BARRIOS">TKR_BARRIOS (Barrios)</option>
+                                          <option value="TKR_PERFILES_DOCTOR">TKR_PERFILES_DOCTOR (Perfiles Doctor)</option>
+                                          <option value="TKR_MEDIOS">TKR_MEDIOS (Medios de Captura)</option>
+                                          <option value="TKR_PLANES_ASEGURADORES">TKR_PLANES_ASEGURADORES (Aseguradoras)</option>
+                                          <option value="TKR_REGIMEN_ASEGURAMIENTO">TKR_REGIMEN_ASEGURAMIENTO (Regímenes)</option>
+                                          <option value="TKR_TIPOS_IDENTIFICACION">TKR_TIPOS_IDENTIFICACION (Tipos ID)</option>
+                                          <option value="TKR_GENEROS">TKR_GENEROS (Géneros)</option>
+                                        </select>
                                       </div>
 
                                       <div>
