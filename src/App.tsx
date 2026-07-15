@@ -2112,7 +2112,7 @@ function App() {
                               setUserMappings(prev => [...prev, newMapping]);
                               setSelectedFieldToAdd('');
                             }}
-                            className="w-full sm:w-auto px-4 py-2.2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-bold rounded-lg cursor-pointer transition-all shadow-xs"
+                            className="w-full sm:w-auto px-5 py-2.5 h-[38px] bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-bold rounded-lg cursor-pointer transition-all shadow-xs flex items-center justify-center gap-1.5"
                           >
                             ➕ Agregar Campo Constante
                           </button>
