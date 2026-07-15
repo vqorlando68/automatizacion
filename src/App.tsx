@@ -144,6 +144,40 @@ const FK_TABLES_MAP: Record<string, string> = {
   id_tipo_identificacion: 'TKR_TIPOS_IDENTIFICACION'
 };
 
+const buildParsedRow = (rawLine: string, columns: any[], lineNumber: number): ParsedRow => {
+  const rowObj: ParsedRow = {
+    linea: rawLine.substring(0, 4000),
+    numero_linea: lineNumber,
+  };
+
+  for (let i = 0; i < 50; i++) {
+    const val = columns[i] !== undefined && columns[i] !== null ? String(columns[i]).trim() : '';
+    rowObj[`c${i + 1}`] = val.substring(0, 4000);
+  }
+
+  return rowObj;
+};
+
+const suggestInitialMappings = (firstRow: ParsedRow, currentMappings: FieldMapping[]): FieldMapping[] => {
+  return currentMappings.map(mapping => {
+    for (let i = 1; i <= 50; i++) {
+      const val = String(firstRow[`c${i}`] || '').toLowerCase().trim();
+      if (!val) continue;
+
+      if (
+        (mapping.campo_destino === 'nombres' && (val.includes('nombre') || val.includes('name'))) ||
+        (mapping.campo_destino === 'apellidos' && (val.includes('apellido') || val.includes('last'))) ||
+        (mapping.campo_destino === 'usuario' && (val.includes('user') || val.includes('usuario'))) ||
+        (mapping.campo_destino === 'clave' && (val.includes('clave') || val.includes('pass') || val.includes('contra'))) ||
+        (mapping.campo_destino === 'identificacion' && (val.includes('identi') || val.includes('doc') || val.includes('cedula')))
+      ) {
+        return { ...mapping, columna_origen: `columna_${i}` };
+      }
+    }
+    return mapping;
+  });
+};
+
 function App() {
   // --- Estados de Rutas y Sesión ---
   const [user, setUser] = useState<string | null>(() => localStorage.getItem('username'));
@@ -427,19 +461,9 @@ function App() {
     if (!rawTextContent) return;
     const lines = rawTextContent.split(/\r?\n/).filter(line => line.trim() !== '');
 
-    const rows: ParsedRow[] = [];
-    lines.forEach((line, index) => {
+    const rows: ParsedRow[] = lines.map((line, index) => {
       const cols = line.split(delimiter);
-      const rowObj: ParsedRow = {
-        linea: line.substring(0, 4000),
-        numero_linea: index + 1,
-      };
-
-      for (let i = 0; i < 50; i++) {
-        const colVal = cols[i] !== undefined ? cols[i].trim() : '';
-        rowObj[`c${i + 1}`] = colVal.substring(0, 4000);
-      }
-      rows.push(rowObj);
+      return buildParsedRow(line, cols, index + 1);
     });
 
     setAllParsedRows(rows);
@@ -455,18 +479,8 @@ function App() {
     const rows: ParsedRow[] = [];
     jsonData.forEach((rowArray, index) => {
       if (!rowArray || rowArray.length === 0) return;
-
       const rowStr = rowArray.join(',');
-      const rowObj: ParsedRow = {
-        linea: rowStr.substring(0, 4000),
-        numero_linea: index + 1,
-      };
-
-      for (let i = 0; i < 50; i++) {
-        const val = rowArray[i] !== undefined && rowArray[i] !== null ? String(rowArray[i]).trim() : '';
-        rowObj[`c${i + 1}`] = val.substring(0, 4000);
-      }
-      rows.push(rowObj);
+      rows.push(buildParsedRow(rowStr, rowArray, index + 1));
     });
 
     setAllParsedRows(rows);
@@ -567,23 +581,7 @@ function App() {
           const hasFileHeader = currentCargue?.tiene_encabezado === 'S';
 
           if (hasFileHeader) {
-            setUserMappings(prev => prev.map(mapping => {
-              for (let i = 1; i <= 50; i++) {
-                const val = String(firstRow[`c${i}`] || '').toLowerCase().trim();
-                if (!val) continue;
-
-                if (
-                  (mapping.campo_destino === 'nombres' && (val.includes('nombre') || val.includes('name'))) ||
-                  (mapping.campo_destino === 'apellidos' && (val.includes('apellido') || val.includes('last'))) ||
-                  (mapping.campo_destino === 'usuario' && (val.includes('user') || val.includes('usuario'))) ||
-                  (mapping.campo_destino === 'clave' && (val.includes('clave') || val.includes('pass') || val.includes('contra'))) ||
-                  (mapping.campo_destino === 'identificacion' && (val.includes('identi') || val.includes('doc') || val.includes('cedula')))
-                ) {
-                  return { ...mapping, columna_origen: `columna_${i}` };
-                }
-              }
-              return mapping;
-            }));
+            setUserMappings(prev => suggestInitialMappings(firstRow, prev));
           }
         }
 

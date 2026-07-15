@@ -1,5 +1,4 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import oracledb from 'oracledb';
 import { executeQuery } from './db';
 
 const ALLOWED_TABLES = [
