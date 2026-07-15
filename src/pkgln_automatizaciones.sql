@@ -869,44 +869,231 @@ CREATE OR REPLACE PACKAGE BODY pkgln_automatizaciones AS
         p_in_json  IN  CLOB,
         p_out_json OUT CLOB
     ) AS
-        v_tabla      VARCHAR2(100);
+        v_tabla       VARCHAR2(100);
         v_tabla_upper VARCHAR2(100);
-        v_sql        VARCHAR2(4000);
-        v_temp_clob  CLOB;
-        v_ctx        NUMBER;
     BEGIN
         -- Obtener nombre de la tabla del JSON
         SELECT JSON_VALUE(p_in_json, '$.tabla') INTO v_tabla FROM dual;
         v_tabla_upper := UPPER(TRIM(v_tabla));
 
-        -- Validar tabla contra la lista blanca
-        IF v_tabla_upper NOT IN (
-            'TKR_CIUDADES',
-            'TKR_BARRIOS',
-            'TKR_PERFILES_DOCTOR',
-            'TKR_MEDIOS',
-            'TKR_PLANES_ASEGURADORES',
-            'TKR_REGIMEN_ASEGURAMIENTO',
-            'TKR_TIPOS_IDENTIFICACION',
-            'TKR_GENEROS'
-        ) THEN
-            p_out_json := '{"success":false,"error":"Tabla no permitida o no autorizada."}';
-            RETURN;
-        END IF;
+        IF v_tabla_upper = 'TKR_CIUDADES' THEN
+            SELECT JSON_OBJECT(
+                'success' VALUE 'true',
+                'tabla'   VALUE 'TKR_CIUDADES',
+                'rows'    VALUE (
+                    SELECT JSON_ARRAYAGG(
+                        JSON_OBJECT(
+                            'ID' VALUE id,
+                            'NOMBRE_CIUDAD' VALUE nombre_city,
+                            'ID_DEPARTAMENTO' VALUE id_dept,
+                            'CODIGO_DANE_CIUDAD' VALUE cod_dane,
+                            'ZIP_CODE' VALUE zip,
+                            'ID_CIUDAD_TQ' VALUE id_tq,
+                            'LATITUD' VALUE lat,
+                            'LONGITUD' VALUE lon
+                        )
+                        RETURNING CLOB
+                    )
+                    FROM (
+                        SELECT id,
+                               nombre_ciudad AS nombre_city,
+                               id_departamento AS id_dept,
+                               codigo_dane_ciudad AS cod_dane,
+                               zip_code AS zip,
+                               id_ciudad_tq AS id_tq,
+                               latitud AS lat,
+                               longitud AS lon
+                        FROM TEKER_DEV.tkr_ciudades
+                        WHERE ROWNUM <= 500
+                        ORDER BY id
+                    )
+                )
+                RETURNING CLOB
+            ) INTO p_out_json FROM dual;
 
-        -- Construir la consulta de las primeras 500 filas
-        v_sql := 'SELECT * FROM TEKER_DEV.' || v_tabla_upper || ' WHERE ROWNUM <= 500 ORDER BY 1';
+        ELSIF v_tabla_upper = 'TKR_BARRIOS' THEN
+            SELECT JSON_OBJECT(
+                'success' VALUE 'true',
+                'tabla'   VALUE 'TKR_BARRIOS',
+                'rows'    VALUE (
+                    SELECT JSON_ARRAYAGG(
+                        JSON_OBJECT(
+                            'ID' VALUE id,
+                            'ID_CIUDAD' VALUE id_c,
+                            'NOMBRE_BARRIO' VALUE name_b,
+                            'NUMERO_COMUNA' VALUE num_com,
+                            'NOMBRE_COMUNA' VALUE name_com
+                        )
+                        RETURNING CLOB
+                    )
+                    FROM (
+                        SELECT id,
+                               id_ciudad AS id_c,
+                               nombre_barrio AS name_b,
+                               numero_comuna AS num_com,
+                               nombre_comuna AS name_com
+                        FROM TEKER_DEV.tkr_barrios
+                        WHERE ROWNUM <= 500
+                        ORDER BY id
+                    )
+                )
+                RETURNING CLOB
+            ) INTO p_out_json FROM dual;
 
-        -- Usar DBMS_XMLGEN para obtener el JSON
-        v_ctx := DBMS_XMLGEN.newContext(v_sql);
-        DBMS_XMLGEN.setNullHandling(v_ctx, DBMS_XMLGEN.EMPTY_TAG);
-        v_temp_clob := DBMS_XMLGEN.getjson(v_ctx);
-        DBMS_XMLGEN.closeContext(v_ctx);
+        ELSIF v_tabla_upper = 'TKR_PERFILES_DOCTOR' THEN
+            SELECT JSON_OBJECT(
+                'success' VALUE 'true',
+                'tabla'   VALUE 'TKR_PERFILES_DOCTOR',
+                'rows'    VALUE (
+                    SELECT JSON_ARRAYAGG(
+                        JSON_OBJECT(
+                            'ID' VALUE id,
+                            'DESCRIPCION_PERFIL' VALUE desc_p,
+                            'DURACION_CITA' VALUE dur
+                        )
+                        RETURNING CLOB
+                    )
+                    FROM (
+                        SELECT id,
+                               descripcion_perfil AS desc_p,
+                               duracion_cita AS dur
+                        FROM TEKER_DEV.tkr_perfiles_doctor
+                        WHERE ROWNUM <= 500
+                        ORDER BY id
+                    )
+                )
+                RETURNING CLOB
+            ) INTO p_out_json FROM dual;
 
-        IF v_temp_clob IS NULL OR LENGTH(v_temp_clob) = 0 THEN
-            p_out_json := '{"success":true,"tabla":"' || v_tabla_upper || '","rows":[]}';
+        ELSIF v_tabla_upper = 'TKR_MEDIOS' THEN
+            SELECT JSON_OBJECT(
+                'success' VALUE 'true',
+                'tabla'   VALUE 'TKR_MEDIOS',
+                'rows'    VALUE (
+                    SELECT JSON_ARRAYAGG(
+                        JSON_OBJECT(
+                            'ID' VALUE id,
+                            'DESCRIPCION' VALUE desc_m,
+                            'ORDEN' VALUE ord
+                        )
+                        RETURNING CLOB
+                    )
+                    FROM (
+                        SELECT id,
+                               descripcion AS desc_m,
+                               orden AS ord
+                        FROM TEKER_DEV.tkr_medios
+                        WHERE ROWNUM <= 500
+                        ORDER BY id
+                    )
+                )
+                RETURNING CLOB
+            ) INTO p_out_json FROM dual;
+
+        ELSIF v_tabla_upper = 'TKR_PLANES_ASEGURADORES' THEN
+            SELECT JSON_OBJECT(
+                'success' VALUE 'true',
+                'tabla'   VALUE 'TKR_PLANES_ASEGURADORES',
+                'rows'    VALUE (
+                    SELECT JSON_ARRAYAGG(
+                        JSON_OBJECT(
+                            'ID' VALUE id,
+                            'NOMBRE_ASEGURADOR' VALUE name_a
+                        )
+                        RETURNING CLOB
+                    )
+                    FROM (
+                        SELECT id,
+                               nombre_ok AS name_a
+                        FROM (
+                            SELECT id, nombre_asegurador AS nombre_ok FROM TEKER_DEV.tkr_planes_aseguradores
+                        )
+                        WHERE ROWNUM <= 500
+                        ORDER BY id
+                    )
+                )
+                RETURNING CLOB
+            ) INTO p_out_json FROM dual;
+
+        ELSIF v_tabla_upper = 'TKR_REGIMEN_ASEGURAMIENTO' THEN
+            SELECT JSON_OBJECT(
+                'success' VALUE 'true',
+                'tabla'   VALUE 'TKR_REGIMEN_ASEGURAMIENTO',
+                'rows'    VALUE (
+                    SELECT JSON_ARRAYAGG(
+                        JSON_OBJECT(
+                            'ID' VALUE id,
+                            'DESCRIPCION' VALUE desc_r
+                        )
+                        RETURNING CLOB
+                    )
+                    FROM (
+                        SELECT id,
+                               descripcion AS desc_r
+                        FROM TEKER_DEV.tkr_regimen_aseguramiento
+                        WHERE ROWNUM <= 500
+                        ORDER BY id
+                    )
+                )
+                RETURNING CLOB
+            ) INTO p_out_json FROM dual;
+
+        ELSIF v_tabla_upper = 'TKR_TIPOS_IDENTIFICACION' THEN
+            SELECT JSON_OBJECT(
+                'success' VALUE 'true',
+                'tabla'   VALUE 'TKR_TIPOS_IDENTIFICACION',
+                'rows'    VALUE (
+                    SELECT JSON_ARRAYAGG(
+                        JSON_OBJECT(
+                            'ID' VALUE id,
+                            'DESCRIPCION' VALUE desc_t,
+                            'ABREVIATURA' VALUE ab_t,
+                            'ABREVIATURA_WOMPI' VALUE ab_w,
+                            'ABREVIATURA_TAXXA' VALUE ab_x,
+                            'ID_TIPODOC_TQ' VALUE doc_tq
+                        )
+                        RETURNING CLOB
+                    )
+                    FROM (
+                        SELECT id,
+                               descripcion AS desc_t,
+                               abreviatura AS ab_t,
+                               abreviatura_wompi AS ab_w,
+                               abreviatura_taxxa AS ab_x,
+                               id_tipodoc_tq AS doc_tq
+                        FROM TEKER_DEV.tkr_tipos_identificacion
+                        WHERE ROWNUM <= 500
+                        ORDER BY id
+                    )
+                )
+                RETURNING CLOB
+            ) INTO p_out_json FROM dual;
+
+        ELSIF v_tabla_upper = 'TKR_GENEROS' THEN
+            SELECT JSON_OBJECT(
+                'success' VALUE 'true',
+                'tabla'   VALUE 'TKR_GENEROS',
+                'rows'    VALUE (
+                    SELECT JSON_ARRAYAGG(
+                        JSON_OBJECT(
+                            'ID' VALUE id,
+                            'GENERO' VALUE gen
+                        )
+                        RETURNING CLOB
+                    )
+                    FROM (
+                        SELECT id,
+                               genero AS gen
+                        FROM TEKER_DEV.tkr_generos
+                        WHERE ROWNUM <= 500
+                        ORDER BY id
+                    )
+                )
+                RETURNING CLOB
+            ) INTO p_out_json FROM dual;
+
         ELSE
-            p_out_json := '{"success":true,"tabla":"' || v_tabla_upper || '","data":' || v_temp_clob || '}';
+            p_out_json := '{"success":false,"error":"Tabla no permitida o no autorizada."}';
         END IF;
     EXCEPTION
         WHEN OTHERS THEN
