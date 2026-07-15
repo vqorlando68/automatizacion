@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import oracledb from 'oracledb';
 import { executeQuery } from './db';
 
 const ALLOWED_TABLES = [
@@ -85,16 +86,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const query = `SELECT * FROM ${tableName} WHERE ROWNUM <= 500 ORDER BY 1`;
-    const result = await executeQuery<any>(query);
-
-    return res.status(200).json({
-      success: true,
-      tabla: tableName,
-      rows: result.rows || [],
+    const inputJson = JSON.stringify({ tabla: tableName });
+    const query = `BEGIN pkgln_automatizaciones.p_consultar_tabla_foranea(:p_in_json, :p_out_json); END;`;
+    const result = await executeQuery(query, {
+      p_in_json: { val: inputJson, type: oracledb.STRING },
+      p_out_json: { dir: oracledb.BIND_OUT, type: oracledb.STRING, maxSize: 5000000 },
     });
+
+    const outBinds = result.outBinds as { p_out_json?: string } | undefined;
+    const responseJson = outBinds?.p_out_json ? JSON.parse(outBinds.p_out_json) : null;
+
+    if (responseJson && responseJson.success) {
+      let rows: any[] = [];
+      if (responseJson.rows) {
+        rows = responseJson.rows;
+      } else if (responseJson.data && responseJson.data.ROWSET && responseJson.data.ROWSET.ROW) {
+        const rowData = responseJson.data.ROWSET.ROW;
+        rows = Array.isArray(rowData) ? rowData : [rowData];
+      }
+      return res.status(200).json({
+        success: true,
+        tabla: tableName,
+        rows: rows
+      });
+    } else {
+      throw new Error(responseJson?.error || 'Error retornado por el procedimiento de base de datos.');
+    }
   } catch (err: any) {
-    console.warn(`Error al consultar tabla ${tableName} en BD, usando mock data:`, err.message);
+    console.warn(`Error al consultar tabla ${tableName} en BD (usando procedimiento), usando mock data:`, err.message);
     return res.status(200).json({
       success: true,
       tabla: tableName,

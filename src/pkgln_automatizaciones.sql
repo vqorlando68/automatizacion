@@ -18,6 +18,11 @@ CREATE OR REPLACE PACKAGE pkgln_automatizaciones AS
         p_in_json  IN  CLOB,
         p_out_json OUT CLOB
     );
+
+    PROCEDURE p_consultar_tabla_foranea (
+        p_in_json  IN  CLOB,
+        p_out_json OUT CLOB
+    );
 END pkgln_automatizaciones;
 /
 
@@ -859,6 +864,54 @@ CREATE OR REPLACE PACKAGE BODY pkgln_automatizaciones AS
             ROLLBACK;
             p_out_json := '{"success":false,"error":"' || REPLACE(SQLERRM, '"', '\"') || '"}';
     END p_crear_usuarios;
+
+    PROCEDURE p_consultar_tabla_foranea (
+        p_in_json  IN  CLOB,
+        p_out_json OUT CLOB
+    ) AS
+        v_tabla      VARCHAR2(100);
+        v_tabla_upper VARCHAR2(100);
+        v_sql        VARCHAR2(4000);
+        v_temp_clob  CLOB;
+        v_ctx        NUMBER;
+    BEGIN
+        -- Obtener nombre de la tabla del JSON
+        SELECT JSON_VALUE(p_in_json, '$.tabla') INTO v_tabla FROM dual;
+        v_tabla_upper := UPPER(TRIM(v_tabla));
+
+        -- Validar tabla contra la lista blanca
+        IF v_tabla_upper NOT IN (
+            'TKR_CIUDADES',
+            'TKR_BARRIOS',
+            'TKR_PERFILES_DOCTOR',
+            'TKR_MEDIOS',
+            'TKR_PLANES_ASEGURADORES',
+            'TKR_REGIMEN_ASEGURAMIENTO',
+            'TKR_TIPOS_IDENTIFICACION',
+            'TKR_GENEROS'
+        ) THEN
+            p_out_json := '{"success":false,"error":"Tabla no permitida o no autorizada."}';
+            RETURN;
+        END IF;
+
+        -- Construir la consulta de las primeras 500 filas
+        v_sql := 'SELECT * FROM TEKER_DEV.' || v_tabla_upper || ' WHERE ROWNUM <= 500 ORDER BY 1';
+
+        -- Usar DBMS_XMLGEN para obtener el JSON
+        v_ctx := DBMS_XMLGEN.newContext(v_sql);
+        DBMS_XMLGEN.setNullHandling(v_ctx, DBMS_XMLGEN.EMPTY_TAG);
+        v_temp_clob := DBMS_XMLGEN.getjson(v_ctx);
+        DBMS_XMLGEN.closeContext(v_ctx);
+
+        IF v_temp_clob IS NULL OR LENGTH(v_temp_clob) = 0 THEN
+            p_out_json := '{"success":true,"tabla":"' || v_tabla_upper || '","rows":[]}';
+        ELSE
+            p_out_json := '{"success":true,"tabla":"' || v_tabla_upper || '","data":' || v_temp_clob || '}';
+        END IF;
+    EXCEPTION
+        WHEN OTHERS THEN
+            p_out_json := '{"success":false,"error":"' || REPLACE(SQLERRM, '"', '\"') || '"}';
+    END p_consultar_tabla_foranea;
 
 END pkgln_automatizaciones;
 /
