@@ -1993,20 +1993,20 @@ function App() {
                                 placeholder="🔎 Buscar campo..."
                                 value={columnSearchTerm}
                                 onChange={(e) => setColumnSearchTerm(e.target.value)}
-                                className="px-2 py-1 flex-1 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs focus:outline-none text-slate-900 dark:text-white"
+                                className="px-3 py-2 flex-1 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs focus:outline-none text-slate-900 dark:text-white"
                               />
                               <div className="flex rounded-lg border border-slate-200 dark:border-slate-800 overflow-hidden text-[9px] font-bold">
                                 <button
                                   type="button"
                                   onClick={() => setColumnSortBy('original')}
-                                  className={`px-2 py-1 cursor-pointer transition-all ${columnSortBy === 'original' ? 'bg-indigo-600 text-white' : 'bg-slate-50 dark:bg-slate-950 text-slate-550 dark:text-slate-400'}`}
+                                  className={`px-2.5 py-2 cursor-pointer transition-all ${columnSortBy === 'original' ? 'bg-indigo-600 text-white' : 'bg-slate-50 dark:bg-slate-950 text-slate-550 dark:text-slate-400'}`}
                                 >
                                   Posición
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => setColumnSortBy('alphabetical')}
-                                  className={`px-2 py-1 cursor-pointer transition-all ${columnSortBy === 'alphabetical' ? 'bg-indigo-600 text-white' : 'bg-slate-50 dark:bg-slate-950 text-slate-550 dark:text-slate-400'}`}
+                                  className={`px-2.5 py-2 cursor-pointer transition-all ${columnSortBy === 'alphabetical' ? 'bg-indigo-600 text-white' : 'bg-slate-50 dark:bg-slate-950 text-slate-550 dark:text-slate-400'}`}
                                 >
                                   A-Z
                                 </button>
@@ -2015,7 +2015,7 @@ function App() {
                             <select
                               value={selectedFieldToAdd}
                               onChange={(e) => setSelectedFieldToAdd(e.target.value)}
-                              className="w-full px-2.5 py-1.8 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-850 dark:text-slate-100 focus:outline-none"
+                              className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-850 dark:text-slate-100 focus:outline-none"
                             >
                               <option value="" disabled>-- Selecciona Campo --</option>
                               {filteredAndSortedColumns.map(col => (
