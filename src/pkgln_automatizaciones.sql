@@ -554,7 +554,7 @@ CREATE OR REPLACE PACKAGE BODY pkgln_automatizaciones AS
                         homol_constante  VARCHAR2(4000) PATH '$.homologacion.valor_constante',
                         homol_tabla      VARCHAR2(100)  PATH '$.homologacion.tabla_destino',
                         homol_criterio   VARCHAR2(50)   PATH '$.homologacion.criterio',
-                        homol_directo_js CLOB           PATH '$.homologacion.valores' FORMAT JSON
+                        homol_directo_js CLOB FORMAT JSON PATH '$.homologacion.valores'
                     )
                 )
             ) LOOP
