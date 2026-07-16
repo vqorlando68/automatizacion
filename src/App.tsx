@@ -245,6 +245,32 @@ function App() {
   const [columnSearchTerm, setColumnSearchTerm] = useState('');
   const [columnSortBy, setColumnSortBy] = useState<'original' | 'alphabetical'>('original');
 
+  // Anchos de columnas en la grilla de validación (Paso 4)
+  const [validationColWidths, setValidationColWidths] = useState<Record<string, number>>({});
+
+  const handleResizeMouseDown = (e: React.MouseEvent, campoDestino: string) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = validationColWidths[campoDestino] || 160;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const deltaX = moveEvent.clientX - startX;
+      const newWidth = Math.max(80, startWidth + deltaX);
+      setValidationColWidths(prev => ({
+        ...prev,
+        [campoDestino]: newWidth
+      }));
+    };
+
+    const handleMouseUp = () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  };
+
   const filteredAndSortedColumns = useMemo(() => {
     let cols = TKR_USUARIOS_COLUMNS.filter(
       col => !userMappings.some(m => m.campo_destino === col.campo_destino)
@@ -931,12 +957,21 @@ function App() {
   };
 
   const getHomologatedValue = (mapping: FieldMapping, row: ParsedRow) => {
-    if (!mapping.homologacion) {
-      if (mapping.columna_origen) {
-        const idx = Number(mapping.columna_origen.replace('columna_', ''));
+    // 1. Obtener el valor de origen (directo o por concatenación)
+    let rawVal = '';
+    if (mapping.concatenacion && mapping.concatenacion.columnas.length > 0) {
+      const parts = mapping.concatenacion.columnas.map(colKey => {
+        const idx = Number(colKey.replace('columna_', ''));
         return row[`c${idx}`] || '';
-      }
-      return '';
+      }).filter(v => v !== '');
+      rawVal = parts.join(mapping.concatenacion.separador ?? ' ');
+    } else if (mapping.columna_origen) {
+      const idx = Number(mapping.columna_origen.replace('columna_', ''));
+      rawVal = row[`c${idx}`] || '';
+    }
+
+    if (!mapping.homologacion) {
+      return rawVal;
     }
 
     const homol = mapping.homologacion;
@@ -945,18 +980,12 @@ function App() {
     }
 
     if (homol.tipo === 'directo') {
-      if (!mapping.columna_origen) return '';
-      const idx = Number(mapping.columna_origen.replace('columna_', ''));
-      const rawVal = row[`c${idx}`] || '';
       const rule = homol.valores?.find(v => v.origen.toLowerCase().trim() === rawVal.toLowerCase().trim());
       if (rule) return rule.destino;
-      return homol.defecto || rawVal;
+      return homol.defecto !== undefined && homol.defecto !== '' ? homol.defecto : rawVal;
     }
 
     if (homol.tipo === 'tabla') {
-      if (!mapping.columna_origen) return '';
-      const idx = Number(mapping.columna_origen.replace('columna_', ''));
-      const rawVal = row[`c${idx}`] || '';
       return `[Búsqueda en ${homol.tabla_destino} por ${homol.criterio === 'id' ? 'ID' : 'Nombre'}: "${rawVal}"]`;
     }
 
@@ -984,7 +1013,7 @@ function App() {
 
   // Obtener los mapeos activos
   const getActiveMappings = () => {
-    return userMappings.filter(m => m.columna_origen !== '');
+    return userMappings.filter(m => m.columna_origen !== '' || m.homologacion?.tipo === 'constante' || (m.concatenacion && m.concatenacion.columnas.length > 0));
   };
 
   return (
@@ -2354,16 +2383,31 @@ function App() {
 
                       {/* Grilla de Validación Dinámica */}
                       <div className="overflow-auto max-h-[500px] border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900 shadow-xs relative">
-                        <table className="w-full border-collapse text-left text-xs table-fixed">
+                        <table className="border-collapse text-left text-xs table-fixed" style={{ width: 'max-content', minWidth: '100%' }}>
                           <thead className="sticky top-0 z-20">
                             <tr className="bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 font-semibold shadow-xs">
-                              <th className="px-4 py-3 w-16 sticky left-0 bg-slate-50 dark:bg-slate-950 z-30 border-r border-slate-100 dark:border-slate-800/80">Fila</th>
-                              {getActiveMappings().map((m) => (
-                                <th key={m.campo_destino} className="px-4 py-3 w-40 truncate" title={`${m.label} (${m.campo_destino})`}>
-                                  <div className="font-bold text-slate-700 dark:text-slate-200">{m.label}</div>
-                                  <div className="text-[9px] text-slate-400 font-mono font-normal uppercase">{m.campo_destino} ({m.tipo})</div>
-                                </th>
-                              ))}
+                              <th className="px-4 py-3 sticky left-0 bg-slate-50 dark:bg-slate-950 z-30 border-r border-slate-100 dark:border-slate-800/80" style={{ width: '64px', minWidth: '64px' }}>Fila</th>
+                              {getActiveMappings().map((m: FieldMapping) => {
+                                const colWidth = validationColWidths[m.campo_destino] || 160;
+                                return (
+                                  <th
+                                    key={m.campo_destino}
+                                    className="px-4 py-3 relative select-none group"
+                                    style={{ width: `${colWidth}px`, minWidth: `${colWidth}px`, maxWidth: `${colWidth}px` }}
+                                    title={`${m.label} (${m.campo_destino})`}
+                                  >
+                                    <div className="font-bold text-slate-700 dark:text-slate-200 truncate pr-2">{m.label}</div>
+                                    <div className="text-[9px] text-slate-400 font-mono font-normal uppercase truncate pr-2">{m.campo_destino} ({m.tipo})</div>
+                                    
+                                    {/* Handle de redimensionamiento */}
+                                    <div
+                                      onMouseDown={(e) => handleResizeMouseDown(e, m.campo_destino)}
+                                      className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-indigo-500/40 active:bg-indigo-650 z-30 transition-colors"
+                                      title="Arrastrar para redimensionar"
+                                    />
+                                  </th>
+                                );
+                              })}
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-600 dark:text-slate-300 font-mono">
@@ -2376,13 +2420,19 @@ function App() {
                             ) : (
                               getMappedPreviewRows().map((row) => (
                                 <tr key={row.id || row.numero_linea} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/20">
-                                  <td className="px-4 py-3 text-slate-400 sticky left-0 bg-white dark:bg-slate-900 border-r border-slate-100 dark:border-slate-800/80">{row.numero_linea}</td>
-                                  {getActiveMappings().map((m) => {
+                                  <td className="px-4 py-3 text-slate-400 sticky left-0 bg-white dark:bg-slate-900 border-r border-slate-100 dark:border-slate-800/80" style={{ width: '64px', minWidth: '64px' }}>{row.numero_linea}</td>
+                                  {getActiveMappings().map((m: FieldMapping) => {
                                     const val = getHomologatedValue(m, row);
                                     const isPassword = m.campo_destino.toLowerCase().includes('clave') || m.campo_destino.toLowerCase().includes('pass');
+                                    const colWidth = validationColWidths[m.campo_destino] || 160;
                                     
                                     return (
-                                      <td key={m.campo_destino} className="px-4 py-3 truncate" title={val}>
+                                      <td
+                                        key={m.campo_destino}
+                                        className="px-4 py-3 truncate"
+                                        style={{ width: `${colWidth}px`, minWidth: `${colWidth}px`, maxWidth: `${colWidth}px` }}
+                                        title={val}
+                                      >
                                         {isPassword && val ? '••••••••' : val || <span className="text-slate-400 italic">NULL</span>}
                                         {m.tipo === 'DATE' && val && !m.homologacion && (
                                           <span className="block text-[8px] text-amber-500 font-bold mt-0.5">
@@ -2798,7 +2848,7 @@ function App() {
             </div>
 
             {/* Contenido / Listado */}
-            <div className={`p-6 pb-16 overflow-y-auto flex-1 bg-slate-50/50 dark:bg-slate-950/20 ${foreignTable && uniqueModalMode === 'mapear' ? 'min-h-[380px]' : ''}`}>
+            <div className={`p-6 pb-16 overflow-y-auto flex-1 bg-slate-50/50 dark:bg-slate-950/20 ${foreignTable && uniqueModalMode === 'mapear' ? 'min-h-[400px]' : ''}`}>
               {uniqueColValues.length === 0 ? (
                 <div className="text-center py-8 text-slate-455 text-xs">
                   Ningún valor coincide con el filtro.
@@ -2824,7 +2874,7 @@ function App() {
                     </thead>
                     <tbody className="divide-y divide-slate-150 dark:divide-slate-800">
                       {uniqueColValues.map((item, idx) => {
-                        const openUpward = uniqueColValues.length <= 5 ? idx > 0 : idx >= uniqueColValues.length - 2;
+                        const openUpward = uniqueColValues.length > 4 && (idx >= uniqueColValues.length - 2);
                         return (
                           <tr
                             key={idx}
