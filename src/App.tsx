@@ -27,6 +27,10 @@ interface FieldMapping {
   columna_origen: string; // columna_1 a columna_50, o ''
   formato_fecha?: string;  // Para campos de tipo DATE
   required?: boolean;
+  concatenacion?: {
+    columnas: string[];
+    separador: string;
+  };
   homologacion?: {
     tipo: 'directo' | 'tabla' | 'constante';
     valor_constante?: string;
@@ -756,15 +760,15 @@ function App() {
   };
 
   const handleConfirmMapping = () => {
-    // Validar que los campos obligatorios de tkr_usuarios estén mapeados a alguna columna
-    const missingRequired = userMappings.filter(m => m.required && !m.columna_origen);
+    // Validar que los campos obligatorios de tkr_usuarios estén mapeados a alguna columna o tengan concatenación
+    const missingRequired = userMappings.filter(m => m.required && !m.columna_origen && !(m.concatenacion && m.concatenacion.columnas.length > 0));
     if (missingRequired.length > 0) {
       setUserCreationError(`Por favor, selecciona una columna de origen para los campos obligatorios: ${missingRequired.map(m => m.label).join(', ')}.`);
       return;
     }
 
-    // Filtrar los mapeos activos (aquellos que tienen asignada una columna de origen)
-    const activeMappings = userMappings.filter(m => m.columna_origen !== '');
+    // Filtrar los mapeos activos (aquellos que tienen asignada una columna de origen o concatenación)
+    const activeMappings = userMappings.filter(m => m.columna_origen !== '' || (m.concatenacion && m.concatenacion.columnas.length > 0));
     if (activeMappings.length === 0) {
       setUserCreationError('Debe mapear al menos una columna antes de proceder.');
       return;
@@ -874,8 +878,8 @@ function App() {
     setCreatingUsers(true);
     setUserCreationError(null);
 
-    // Mandar mapeos activos (aquellos con columna_origen, o aquellos con homologación tipo constante)
-    const activeMappings = userMappings.filter(m => m.columna_origen !== '' || m.homologacion?.tipo === 'constante');
+    // Mandar mapeos activos (aquellos con columna_origen, constante o aquellos con concatenación activa)
+    const activeMappings = userMappings.filter(m => m.columna_origen !== '' || m.homologacion?.tipo === 'constante' || (m.concatenacion && m.concatenacion.columnas.length > 0));
 
     try {
       const response = await fetch('/api/crear-usuarios', {
@@ -889,6 +893,10 @@ function App() {
             columna_origen: m.columna_origen,
             tipo: m.tipo,
             formato_fecha: m.tipo === 'DATE' ? m.formato_fecha || 'DD/MM/YYYY' : null,
+            concatenacion: m.concatenacion ? {
+              columnas: m.concatenacion.columnas || [],
+              separador: m.concatenacion.separador || ' '
+            } : null,
             homologacion: m.homologacion ? {
               tipo: m.homologacion.tipo,
               valor_constante: m.homologacion.valor_constante || null,
@@ -1663,22 +1671,120 @@ function App() {
                               </div>
                             </div>
 
-                            {/* Columna Origen (Select) */}
+                            {/* Columna Origen (Select / Concatenacion) */}
                             <div className={`flex-1 grid gap-4 items-center ${mapping.tipo === 'DATE' && mapping.columna_origen !== '' ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
                               <div>
-                                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">Columna del Archivo</label>
-                                <select
-                                  value={mapping.columna_origen}
-                                  onChange={(e) => handleMappingChange(mapping.campo_destino, 'columna_origen', e.target.value)}
-                                  className="w-full px-2 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-indigo-500"
-                                >
-                                  <option value="">-- No Mapear (Guardar NULL/Defecto) --</option>
-                                  {Array.from({ length: 50 }).map((_, i) => (
-                                    <option key={i} value={`columna_${i + 1}`}>
-                                      {getColumnLabel(`columna_${i + 1}`)}
-                                    </option>
-                                  ))}
-                                </select>
+                                <div className="flex justify-between items-center mb-1">
+                                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide">Origen de Datos</label>
+                                  <label className="flex items-center gap-1 cursor-pointer select-none text-[10px] text-indigo-650 dark:text-indigo-400 font-bold hover:underline">
+                                    <input
+                                      type="checkbox"
+                                      checked={!!mapping.concatenacion}
+                                      onChange={(e) => {
+                                        if (e.target.checked) {
+                                          handleMappingChange(mapping.campo_destino, 'concatenacion', {
+                                            columnas: [mapping.columna_origen || 'columna_1'],
+                                            separador: ' '
+                                          });
+                                          handleMappingChange(mapping.campo_destino, 'columna_origen', '');
+                                        } else {
+                                          const firstCol = mapping.concatenacion?.columnas[0] || '';
+                                          handleMappingChange(mapping.campo_destino, 'concatenacion', undefined);
+                                          handleMappingChange(mapping.campo_destino, 'columna_origen', firstCol);
+                                        }
+                                      }}
+                                      className="w-3 h-3 text-indigo-600 focus:ring-indigo-500 rounded"
+                                    />
+                                    <span>🔗 Concatenar</span>
+                                  </label>
+                                </div>
+
+                                {mapping.concatenacion ? (
+                                  <div className="space-y-2 border border-dashed border-slate-200 dark:border-slate-800 p-2.5 rounded-lg bg-slate-50/50 dark:bg-slate-900/30">
+                                    <div className="space-y-1.5">
+                                      {mapping.concatenacion.columnas.map((col: string, cIdx: number) => (
+                                        <div key={cIdx} className="flex gap-1.5 items-center">
+                                          <select
+                                            value={col}
+                                            onChange={(e) => {
+                                              const newCols = [...mapping.concatenacion!.columnas];
+                                              newCols[cIdx] = e.target.value;
+                                              handleMappingChange(mapping.campo_destino, 'concatenacion', {
+                                                ...mapping.concatenacion,
+                                                columnas: newCols
+                                              });
+                                            }}
+                                            className="flex-1 px-2.5 py-1 bg-white dark:bg-slate-950 border border-slate-250 dark:border-slate-800 rounded-lg text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-indigo-500 font-mono"
+                                          >
+                                            {Array.from({ length: 50 }).map((_, i) => (
+                                              <option key={i} value={`columna_${i + 1}`}>
+                                                {getColumnLabel(`columna_${i + 1}`)}
+                                              </option>
+                                            ))}
+                                          </select>
+                                          {mapping.concatenacion!.columnas.length > 1 && (
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                const newCols = mapping.concatenacion!.columnas.filter((_: string, idx: number) => idx !== cIdx);
+                                                handleMappingChange(mapping.campo_destino, 'concatenacion', {
+                                                  ...mapping.concatenacion,
+                                                  columnas: newCols
+                                                });
+                                              }}
+                                              className="p-1 rounded text-red-500 hover:bg-red-500/10 text-xs cursor-pointer font-bold"
+                                              title="Eliminar columna de concatenación"
+                                            >
+                                              ✕
+                                            </button>
+                                          )}
+                                        </div>
+                                      ))}
+                                    </div>
+                                    <div className="flex justify-between items-center gap-4 pt-1">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          handleMappingChange(mapping.campo_destino, 'concatenacion', {
+                                            ...mapping.concatenacion,
+                                            columnas: [...mapping.concatenacion!.columnas, 'columna_1']
+                                          });
+                                        }}
+                                        className="text-[10px] text-indigo-650 dark:text-indigo-400 font-bold hover:underline cursor-pointer flex items-center gap-0.5"
+                                      >
+                                        ➕ Agregar Columna
+                                      </button>
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="text-[10px] text-slate-400 font-bold">Separador:</span>
+                                        <input
+                                          type="text"
+                                          value={mapping.concatenacion.separador}
+                                          onChange={(e) => {
+                                            handleMappingChange(mapping.campo_destino, 'concatenacion', {
+                                              ...mapping.concatenacion,
+                                              separador: e.target.value
+                                            });
+                                          }}
+                                          placeholder="Ej: espacio"
+                                          className="w-16 px-1.5 py-0.5 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-md text-center text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-indigo-500 font-mono"
+                                        />
+                                      </div>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <select
+                                    value={mapping.columna_origen}
+                                    onChange={(e) => handleMappingChange(mapping.campo_destino, 'columna_origen', e.target.value)}
+                                    className="w-full px-2 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-indigo-500"
+                                  >
+                                    <option value="">-- No Mapear (Guardar NULL/Defecto) --</option>
+                                    {Array.from({ length: 50 }).map((_, i) => (
+                                      <option key={i} value={`columna_${i + 1}`}>
+                                        {getColumnLabel(`columna_${i + 1}`)}
+                                      </option>
+                                    ))}
+                                  </select>
+                                )}
                               </div>
 
                               {/* Formato de Fecha si es tipo DATE */}
@@ -1783,7 +1889,7 @@ function App() {
                       <div className="space-y-4 max-h-[450px] overflow-y-auto pr-2">
                         {userMappings.map((mapping) => {
                           const isConstant = mapping.homologacion?.tipo === 'constante';
-                          if (!mapping.columna_origen && !isConstant) return null;
+                          if (!mapping.columna_origen && !isConstant && !(mapping.concatenacion && mapping.concatenacion.columnas.length > 0)) return null;
 
                           const hasHomol = !!mapping.homologacion;
                           const currentType = mapping.homologacion?.tipo || 'directo';
@@ -1803,12 +1909,14 @@ function App() {
                                     ) : (
                                       <div className="flex items-center gap-2 mt-0.5">
                                         <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono">
-                                          Mapeado a: {getColumnLabel(mapping.columna_origen)}
+                                          Mapeado a: {mapping.concatenacion 
+                                            ? mapping.concatenacion.columnas.map((c: string) => getColumnLabel(c)).join(' + ') 
+                                            : getColumnLabel(mapping.columna_origen)}
                                         </span>
                                         {hasHomol && (
                                           <button
                                             type="button"
-                                            onClick={() => openUniqueValuesModal(mapping.columna_origen, mapping.label, mapping.campo_destino)}
+                                            onClick={() => openUniqueValuesModal(mapping.columna_origen || mapping.concatenacion?.columnas[0] || '', mapping.label, mapping.campo_destino)}
                                             className="text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 font-bold text-[9px] uppercase tracking-wide flex items-center gap-0.5 transition-all cursor-pointer hover:underline"
                                             title="Ver valores únicos en el archivo"
                                           >
@@ -2690,7 +2798,7 @@ function App() {
             </div>
 
             {/* Contenido / Listado */}
-            <div className="p-6 pb-16 overflow-y-auto flex-1 bg-slate-50/50 dark:bg-slate-950/20">
+            <div className={`p-6 pb-16 overflow-y-auto flex-1 bg-slate-50/50 dark:bg-slate-950/20 ${foreignTable && uniqueModalMode === 'mapear' ? 'min-h-[380px]' : ''}`}>
               {uniqueColValues.length === 0 ? (
                 <div className="text-center py-8 text-slate-455 text-xs">
                   Ningún valor coincide con el filtro.
