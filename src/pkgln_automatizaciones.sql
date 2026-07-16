@@ -312,7 +312,9 @@ CREATE OR REPLACE PACKAGE BODY pkgln_automatizaciones AS
             homol_constante  VARCHAR2(4000),
             homol_tabla      VARCHAR2(100),
             homol_criterio   VARCHAR2(50),
-            homol_directo_js CLOB
+            homol_directo_js CLOB,
+            concat_cols_js   CLOB,
+            concat_separador VARCHAR2(100)
         );
         TYPE t_mappings_list IS TABLE OF t_mapping INDEX BY BINARY_INTEGER;
         v_mappings           t_mappings_list;
@@ -554,7 +556,9 @@ CREATE OR REPLACE PACKAGE BODY pkgln_automatizaciones AS
                         homol_constante  VARCHAR2(4000) PATH '$.homologacion.valor_constante',
                         homol_tabla      VARCHAR2(100)  PATH '$.homologacion.tabla_destino',
                         homol_criterio   VARCHAR2(50)   PATH '$.homologacion.criterio',
-                        homol_directo_js CLOB FORMAT JSON PATH '$.homologacion.valores'
+                        homol_directo_js CLOB FORMAT JSON PATH '$.homologacion.valores',
+                        concat_cols_js   CLOB FORMAT JSON PATH '$.concatenacion.columnas',
+                        concat_separador VARCHAR2(100)  PATH '$.concatenacion.separador'
                     )
                 )
             ) LOOP
@@ -562,6 +566,31 @@ CREATE OR REPLACE PACKAGE BODY pkgln_automatizaciones AS
                 IF m.columna_origen IS NOT NULL AND NOT f_validar_col(m.columna_origen) THEN
                     p_out_json := '{"success":false,"error":"Nombre de columna de origen inválido: ' || m.columna_origen || '"}';
                     RETURN;
+                END IF;
+
+                -- Validar columnas de concatenación si existen
+                IF m.concat_cols_js IS NOT NULL THEN
+                    FOR c IN (
+                        SELECT col
+                        FROM JSON_TABLE(m.concat_cols_js, '$[*]'
+                            COLUMNS (
+                                col VARCHAR2(100) PATH '$'
+                            )
+                        )
+                    ) LOOP
+                        IF c.col IS NOT NULL AND NOT f_validar_col(c.col) THEN
+                            p_out_json := '{"success":false,"error":"Nombre de columna de origen en concatenación inválido: ' || c.col || '"}';
+                            RETURN;
+                        END IF;
+                    END LOOP;
+                END IF;
+
+                -- Validar si es una función de fecha para evitar SQL injection
+                IF m.homol_tipo = 'funcion' AND m.homol_constante IS NOT NULL THEN
+                    IF NOT REGEXP_LIKE(m.homol_constante, '^[a-zA-Z0-9_]+(\(\))?$') THEN
+                        p_out_json := '{"success":false,"error":"Nombre de función de fecha inválido o no seguro: ' || m.homol_constante || '"}';
+                        RETURN;
+                    END IF;
                 END IF;
 
                 v_mappings(v_idx).campo_destino    := m.campo_destino;
@@ -573,6 +602,8 @@ CREATE OR REPLACE PACKAGE BODY pkgln_automatizaciones AS
                 v_mappings(v_idx).homol_tabla      := m.homol_tabla;
                 v_mappings(v_idx).homol_criterio   := m.homol_criterio;
                 v_mappings(v_idx).homol_directo_js := m.homol_directo_js;
+                v_mappings(v_idx).concat_cols_js   := m.concat_cols_js;
+                v_mappings(v_idx).concat_separador := m.concat_separador;
                 v_idx := v_idx + 1;
             END LOOP;
         END;
@@ -602,11 +633,41 @@ CREATE OR REPLACE PACKAGE BODY pkgln_automatizaciones AS
                     v_val := NULL;
 
                     -- A. Obtener el valor crudo
-                    IF v_mappings(i).homol_tipo = 'constante' THEN
-                        v_val := v_mappings(i).homol_constante;
-                    ELSIF v_mappings(i).columna_origen IS NOT NULL AND TRIM(v_mappings(i).columna_origen) IS NOT NULL THEN
-                        v_val := f_obtener_val_col(v_mappings(i).columna_origen, r);
-                    END IF;
+                     IF v_mappings(i).homol_tipo = 'constante' THEN
+                         v_val := v_mappings(i).homol_constante;
+                     ELSIF v_mappings(i).homol_tipo = 'funcion' THEN
+                         v_val := v_mappings(i).homol_constante;
+                     ELSIF v_mappings(i).concat_cols_js IS NOT NULL THEN
+                         DECLARE
+                             v_concat_val VARCHAR2(32767) := NULL;
+                             v_col_name_origen VARCHAR2(100);
+                             v_temp_val   VARCHAR2(32767);
+                         BEGIN
+                             FOR c IN (
+                                 SELECT col
+                                 FROM JSON_TABLE(v_mappings(i).concat_cols_js, '$[*]'
+                                     COLUMNS (
+                                         col VARCHAR2(100) PATH '$'
+                                     )
+                                 )
+                             ) LOOP
+                                 v_col_name_origen := c.col;
+                                 IF v_col_name_origen IS NOT NULL AND TRIM(v_col_name_origen) IS NOT NULL THEN
+                                     v_temp_val := f_obtener_val_col(v_col_name_origen, r);
+                                     IF v_temp_val IS NOT NULL THEN
+                                         IF v_concat_val IS NULL THEN
+                                             v_concat_val := v_temp_val;
+                                         ELSE
+                                             v_concat_val := v_concat_val || v_mappings(i).concat_separador || v_temp_val;
+                                         END IF;
+                                     END IF;
+                                 END IF;
+                             END LOOP;
+                             v_val := v_concat_val;
+                         END;
+                     ELSIF v_mappings(i).columna_origen IS NOT NULL AND TRIM(v_mappings(i).columna_origen) IS NOT NULL THEN
+                         v_val := f_obtener_val_col(v_mappings(i).columna_origen, r);
+                     END IF;
 
                     -- B. Aplicar homologación directa
                     IF v_mappings(i).homol_tipo = 'directo' AND v_val IS NOT NULL AND v_mappings(i).homol_directo_js IS NOT NULL THEN
@@ -668,7 +729,11 @@ CREATE OR REPLACE PACKAGE BODY pkgln_automatizaciones AS
                                 DECLARE
                                     v_dummy DATE;
                                 BEGIN
-                                    v_dummy := TO_DATE(v_val, v_mappings(i).formato_fecha);
+                                    IF v_mappings(i).homol_tipo = 'funcion' THEN
+                                        NULL;
+                                    ELSE
+                                        v_dummy := TO_DATE(v_val, v_mappings(i).formato_fecha);
+                                    END IF;
                                 EXCEPTION
                                     WHEN OTHERS THEN
                                         IF v_mappings(i).columna_origen IS NOT NULL THEN
@@ -678,7 +743,11 @@ CREATE OR REPLACE PACKAGE BODY pkgln_automatizaciones AS
                                         END IF;
                                 END;
                                 v_cols := v_cols || v_col_name || ', ';
-                                v_vals := v_vals || 'TO_DATE(''' || REPLACE(v_val, '''', '''''''') || ''', ''' || v_mappings(i).formato_fecha || '''), ';
+                                IF v_mappings(i).homol_tipo = 'funcion' THEN
+                                    v_vals := v_vals || v_val || ', ';
+                                ELSE
+                                    v_vals := v_vals || 'TO_DATE(''' || REPLACE(v_val, '''', '''''''') || ''', ''' || v_mappings(i).formato_fecha || '''), ';
+                                END IF;
                             END;
                         ELSE
                             v_cols := v_cols || v_col_name || ', ';
