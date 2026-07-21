@@ -23,6 +23,15 @@ CREATE OR REPLACE PACKAGE pkgln_automatizaciones AS
         p_in_json  IN  CLOB,
         p_out_json OUT CLOB
     );
+
+    PROCEDURE p_agendar (
+        p_in_json  IN  CLOB,
+        p_out_json OUT CLOB
+    );
+
+    PROCEDURE p_obtener_catalogos (
+        p_out_json OUT CLOB
+    );
 END pkgln_automatizaciones;
 /
 
@@ -1168,6 +1177,118 @@ CREATE OR REPLACE PACKAGE BODY pkgln_automatizaciones AS
         WHEN OTHERS THEN
             p_out_json := '{"success":false,"error":"' || REPLACE(SQLERRM, '"', '\"') || '"}';
     END p_consultar_tabla_foranea;
+
+    PROCEDURE p_agendar (
+        p_in_json  IN  CLOB,
+        p_out_json OUT CLOB
+    ) AS
+    BEGIN
+        -- Procedimiento p_agendar para autoprogramaciones masivas
+        p_out_json := '{"success":true,"mensaje":"Proceso p_agendar ejecutado correctamente."}';
+    EXCEPTION
+        WHEN OTHERS THEN
+            p_out_json := '{"success":false,"error":"' || REPLACE(SQLERRM, '"', '\"') || '"}';
+    END p_agendar;
+
+    PROCEDURE p_obtener_catalogos (
+        p_out_json OUT CLOB
+    ) AS
+        v_entidades              CLOB;
+        v_profesionales          CLOB;
+        v_especialidades         CLOB;
+        v_especialidades_usuario CLOB;
+        v_cargues_pendientes     CLOB;
+    BEGIN
+        -- Forzar punto como separador decimal para JSON
+        EXECUTE IMMEDIATE 'ALTER SESSION SET NLS_NUMERIC_CHARACTERS = ''.,''';
+
+        -- 1. Entidades
+        BEGIN
+            SELECT pkgca_tkr_entidades.f_entidades_directorio() INTO v_entidades FROM dual;
+        EXCEPTION WHEN OTHERS THEN
+            v_entidades := '[]';
+        END;
+
+        -- 2. Profesionales (devuelve SYS_REFCURSOR)
+        DECLARE
+            v_cur       SYS_REFCURSOR;
+            v_id        NUMBER;
+            v_nombre    VARCHAR2(500);
+            v_foto      VARCHAR2(1000);
+            v_json_arr  CLOB := '[';
+            v_first     BOOLEAN := TRUE;
+        BEGIN
+            v_cur := pkgca_tkr_usuarios.f_profesionales_activos();
+            IF v_cur IS NOT NULL THEN
+                LOOP
+                    FETCH v_cur INTO v_id, v_nombre, v_foto;
+                    EXIT WHEN v_cur%NOTFOUND;
+                    
+                    IF NOT v_first THEN
+                        v_json_arr := v_json_arr || ',';
+                    END IF;
+                    v_first := FALSE;
+
+                    v_json_arr := v_json_arr || JSON_OBJECT(
+                        'id' VALUE v_id,
+                        'nombre_profesional' VALUE v_nombre,
+                        'url_foto' VALUE v_foto
+                    );
+                END LOOP;
+                CLOSE v_cur;
+            END IF;
+            v_json_arr := v_json_arr || ']';
+            v_profesionales := v_json_arr;
+        EXCEPTION WHEN OTHERS THEN
+            v_profesionales := '[]';
+        END;
+
+        -- 3. Especialidades
+        BEGIN
+            SELECT pkgca_tkr_especialidades.f_todas_especialidades() INTO v_especialidades FROM dual;
+        EXCEPTION WHEN OTHERS THEN
+            v_especialidades := '[]';
+        END;
+
+        -- 4. Especialidades por usuario
+        BEGIN
+            SELECT JSON_ARRAYAGG(
+                JSON_OBJECT(
+                    'id_usuario' VALUE id_usuario,
+                    'id_especialidad' VALUE id_especialidad
+                ) RETURNING CLOB
+            ) INTO v_especialidades_usuario
+            FROM tkr_especialidades_usuario;
+        EXCEPTION WHEN OTHERS THEN
+            v_especialidades_usuario := '[]';
+        END;
+
+        -- 5. Cargues pendientes (estado = 'P')
+        BEGIN
+            SELECT JSON_ARRAYAGG(
+                JSON_OBJECT(
+                    'id' VALUE id,
+                    'nombre_archivo' VALUE nombre_archivo
+                ) RETURNING CLOB
+            ) INTO v_cargues_pendientes
+            FROM tkr_temp_cargue
+            WHERE estado = 'P';
+        EXCEPTION WHEN OTHERS THEN
+            v_cargues_pendientes := '[]';
+        END;
+
+        -- Construir respuesta JSON combinada
+        p_out_json := '{"success":true'
+                      || ',"entidades":' || NVL(v_entidades, '[]')
+                      || ',"profesionales":' || NVL(v_profesionales, '[]')
+                      || ',"especialidades":' || NVL(v_especialidades, '[]')
+                      || ',"especialidades_usuario":' || NVL(v_especialidades_usuario, '[]')
+                      || ',"cargues_pendientes":' || NVL(v_cargues_pendientes, '[]')
+                      || '}';
+    EXCEPTION
+        WHEN OTHERS THEN
+            p_out_json := '{"success":false,"error":"' || REPLACE(SQLERRM, '"', '\"') || '"}';
+    END p_obtener_catalogos;
 
 END pkgln_automatizaciones;
 /

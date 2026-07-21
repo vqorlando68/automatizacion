@@ -10,8 +10,9 @@ import {
 } from './utils/mappingUtils'
 import { DatabaseTableModal } from './components/DatabaseTableModal'
 import { UniqueValuesModal } from './components/UniqueValuesModal'
+import { Autoprogramaciones } from './components/Autoprogramaciones'
 
-type Tab = 'cargue' | 'crear_usuarios';
+type Tab = 'cargue' | 'crear_usuarios' | 'autoprogramaciones';
 type WizardStep = '1' | '2_text' | '2_excel' | '3' | '4';
 type UserWizardStep = '1' | '2' | '3' | '4' | '5';
 
@@ -1009,6 +1010,20 @@ function App() {
                   <span>👥</span>
                   Crear Usuarios
                 </button>
+
+                <button
+                  onClick={() => {
+                    setCurrentTab('autoprogramaciones');
+                  }}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all duration-200 cursor-pointer ${
+                    currentTab === 'autoprogramaciones'
+                      ? 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-300 border-l-4 border-indigo-600'
+                      : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-slate-200'
+                  }`}
+                >
+                  <span>🗓️</span>
+                  Autoprogramaciones
+                </button>
               </nav>
             </div>
 
@@ -1026,6 +1041,11 @@ function App() {
             
             {/* Contenido Dinámico por Pestaña */}
             <div className="space-y-6">
+              
+              {/* --- CONTENIDO: AUTOPROGRAMACIONES --- */}
+              {currentTab === 'autoprogramaciones' && (
+                <Autoprogramaciones />
+              )}
               
 
 
