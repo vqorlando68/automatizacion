@@ -29,6 +29,21 @@ CREATE OR REPLACE PACKAGE pkgln_automatizaciones AS
         p_out_json OUT CLOB
     );
 
+    PROCEDURE p_consultar_citas (
+        p_in_json  IN  CLOB,
+        p_out_json OUT CLOB
+    );
+
+    PROCEDURE p_validar (
+        p_in_json  IN  CLOB,
+        p_out_json OUT CLOB
+    );
+
+    PROCEDURE p_consultar_citas_paciente (
+        p_in_json  IN  CLOB,
+        p_out_json OUT CLOB
+    );
+
     PROCEDURE p_obtener_catalogos (
         p_out_json OUT CLOB
     );
@@ -1184,11 +1199,37 @@ CREATE OR REPLACE PACKAGE BODY pkgln_automatizaciones AS
     ) AS
     BEGIN
         -- Procedimiento p_agendar para autoprogramaciones masivas
-        p_out_json := '{"success":true,"mensaje":"Proceso p_agendar ejecutado correctamente."}';
+        p_out_json := '{"success":true,"mensaje":"Proceso p_agendar ejecutado correctamente.","id_proceso":10,"atenciones_agendadas":[
+        {
+          "id_especialidad": 2,
+          "nombre_especialidad": "Cardiología",
+          "Cantidad de Atenciones": 6,
+          "PROFESIONAL": "Robert Chamorro"
+        },
+        {
+          "id_especialidad": 9,
+          "nombre_especialidad": "Endocrinología Adultos",
+          "Cantidad de Atenciones": 17,
+          "PROFESIONAL": "sebastian tabares"
+        },
+        {
+          "id_especialidad": 11,
+          "nombre_especialidad": "Gastroenterología",
+          "Cantidad de Atenciones": 1,
+          "PROFESIONAL": "Liber Calderón"
+        },
+        {
+          "id_especialidad": 12,
+          "nombre_especialidad": "Ginecología y Obstetricia",
+          "Cantidad de Atenciones": 4,
+          "PROFESIONAL": "tatiana betancourt"
+        }
+        ]}';
     EXCEPTION
         WHEN OTHERS THEN
             p_out_json := '{"success":false,"error":"' || REPLACE(SQLERRM, '"', '\"') || '"}';
     END p_agendar;
+
 
     PROCEDURE p_obtener_catalogos (
         p_out_json OUT CLOB
@@ -1289,6 +1330,202 @@ CREATE OR REPLACE PACKAGE BODY pkgln_automatizaciones AS
         WHEN OTHERS THEN
             p_out_json := '{"success":false,"error":"' || REPLACE(SQLERRM, '"', '\"') || '"}';
     END p_obtener_catalogos;
+
+    PROCEDURE p_consultar_citas (
+        p_in_json  IN  CLOB,
+        p_out_json OUT CLOB
+    ) AS
+        v_id_proceso NUMBER;
+        v_rows       CLOB;
+    BEGIN
+        -- Forzar punto como separador decimal para JSON
+        EXECUTE IMMEDIATE 'ALTER SESSION SET NLS_NUMERIC_CHARACTERS = ''.,''';
+
+        v_id_proceso := JSON_VALUE(p_in_json, '$.id_proceso');
+
+        BEGIN
+            SELECT JSON_ARRAYAGG(
+                JSON_OBJECT(
+                    'id' VALUE id,
+                    'codigo_cita' VALUE codigo_cita,
+                    'fecha_cita' VALUE fecha_cita,
+                    'id_usuario' VALUE id_usuario,
+                    'tipo_identificacion_paciente' VALUE tipo_identificacion_paciente,
+                    'identificacion_paciente' VALUE identificacion_paciente,
+                    'correo_electronico_paciente' VALUE correo_electronico_paciente,
+                    'telefono_paciente' VALUE telefono_paciente,
+                    'nombre_paciente' VALUE nombre_paciente,
+                    'nombre_especialidad' VALUE nombre_especialidad,
+                    'nombre_profesional' VALUE nombre_profesional,
+                    'total_registros_usuario' VALUE total_registros_usuario,
+                    'proceso_actual' VALUE proceso_actual
+                )
+                RETURNING CLOB
+            ) INTO v_rows
+            FROM (
+                SELECT c.id,
+                       c.id_hexadecimal                                         codigo_cita,
+                       TO_CHAR (c.fecha_inicio_cita, 'dd/mm/yyyy hh:mi am')     fecha_cita,
+                       u.id id_usuario,
+                       u.nombres || ' ' || u.apellidos                          nombre_paciente,
+                       u.telefono telefono_paciente,
+                       u.correo_electronico correo_electronico_paciente,
+                       ti.abreviatura tipo_identificacion_paciente,
+                       u.identificacion identificacion_paciente,
+                       e.nombre_especialidad,
+                       d.nombres || ' ' || d.apellidos                          nombre_profesional,
+                       COUNT(*) OVER (PARTITION BY u.id) AS total_registros_usuario,
+                       CASE
+                        WHEN c.id_proceso = v_id_proceso THEN
+                            'S'
+                        ELSE
+                            'N'
+                       END proceso_actual
+                  FROM tkr_citas           c,
+                       tkr_usuarios        u,
+                       tkr_usuarios        d,
+                       tkr_especialidades  e,
+                       tkr_tipos_identificacion ti
+                 WHERE     c.id_usuario = u.id
+                       AND ti.id = u.id_tipo_identificacion
+                       AND c.id_profesional = d.id
+                       AND c.id_especialidad = e.id
+                       AND c.id_proceso = v_id_proceso
+                 ORDER BY c.id DESC
+            );
+        EXCEPTION
+            WHEN NO_DATA_FOUND THEN
+                v_rows := '[]';
+            WHEN OTHERS THEN
+                RAISE;
+        END;
+
+        p_out_json := '{"success":true,"id_proceso":' || v_id_proceso || ',"citas":' || NVL(v_rows, '[]') || '}';
+    EXCEPTION
+        WHEN OTHERS THEN
+            p_out_json := '{"success":false,"error":"' || REPLACE(SQLERRM, '"', '\"') || '"}';
+    END p_consultar_citas;
+
+    PROCEDURE p_validar (
+        p_in_json  IN  CLOB,
+        p_out_json OUT CLOB
+    ) AS
+    BEGIN
+        -- Procedimiento p_validar para confirmación y borrado de citas
+        -- El usuario lo programará manualmente
+        p_out_json := '{"success":true,"mensaje":"Validación procesada correctamente.","atenciones_agendadas":[
+        {
+          "id_especialidad": 2,
+          "nombre_especialidad": "Cardiología",
+          "Cantidad de Atenciones": 5,
+          "PROFESIONAL": "Robert Chamorro"
+        },
+        {
+          "id_especialidad": 9,
+          "nombre_especialidad": "Endocrinología Adultos",
+          "Cantidad de Atenciones": 15,
+          "PROFESIONAL": "sebastian tabares"
+        }
+        ]}';
+    EXCEPTION
+        WHEN OTHERS THEN
+            p_out_json := '{"success":false,"error":"' || REPLACE(SQLERRM, '"', '\"') || '"}';
+    END p_validar;
+
+    PROCEDURE p_consultar_citas_paciente (
+        p_in_json  IN  CLOB,
+        p_out_json OUT CLOB
+    ) AS
+        v_id_usuario NUMBER;
+        v_id_cita    NUMBER;
+        v_id_proceso NUMBER;
+        v_rows       CLOB;
+    BEGIN
+        -- Forzar punto como separador decimal para JSON
+        EXECUTE IMMEDIATE 'ALTER SESSION SET NLS_NUMERIC_CHARACTERS = ''.,''';
+
+        v_id_usuario := JSON_VALUE(p_in_json, '$.id_usuario');
+        v_id_cita    := JSON_VALUE(p_in_json, '$.id_cita');
+        v_id_proceso := JSON_VALUE(p_in_json, '$.id_proceso');
+
+        IF v_id_proceso IS NULL AND v_id_cita IS NOT NULL THEN
+            BEGIN
+                SELECT id_proceso INTO v_id_proceso FROM tkr_citas WHERE id = v_id_cita;
+            EXCEPTION
+                WHEN OTHERS THEN
+                    v_id_proceso := NULL;
+            END;
+        END IF;
+
+        BEGIN
+            SELECT JSON_ARRAYAGG(
+                JSON_OBJECT(
+                    'id' VALUE id,
+                    'codigo_cita' VALUE codigo_cita,
+                    'estado_cita' VALUE estado_cita,
+                    'fecha_cita' VALUE fecha_cita,
+                    'tipo_identificacion_paciente' VALUE tipo_identificacion_paciente,
+                    'identificacion_paciente' VALUE identificacion_paciente,
+                    'correo_electronico_paciente' VALUE correo_electronico_paciente,
+                    'telefono_paciente' VALUE telefono_paciente,
+                    'nombre_paciente' VALUE nombre_paciente,
+                    'nombre_especialidad' VALUE nombre_especialidad,
+                    'nombre_profesional' VALUE nombre_profesional,
+                    'total_registros_usuario' VALUE total_registros_usuario,
+                    'proceso_actual' VALUE proceso_actual
+                )
+                RETURNING CLOB
+            ) INTO v_rows
+            FROM (
+                SELECT c.id,
+                       c.id_hexadecimal                                         codigo_cita,
+                       ec.estado_cita,
+                       TO_CHAR (c.fecha_inicio_cita, 'dd/mm/yyyy hh:mi am')     fecha_cita,
+                       u.nombres || ' ' || u.apellidos                          nombre_paciente,
+                       u.telefono telefono_paciente,
+                       u.correo_electronico correo_electronico_paciente,
+                       ti.abreviatura tipo_identificacion_paciente,
+                       u.identificacion identificacion_paciente,
+                       u.telefono,
+                       u.correo_electronico,
+                       u.direccion,
+                       e.nombre_especialidad,
+                       d.nombres || ' ' || d.apellidos                          nombre_profesional,
+                       COUNT(*) OVER (PARTITION BY c.id) AS total_registros_usuario,
+                       CASE
+                        WHEN c.id_proceso = v_id_proceso THEN
+                            'S'
+                        ELSE
+                            'N'
+                       END proceso_actual
+                  FROM tkr_citas         c,
+                       tkr_usuarios      u,
+                       tkr_usuarios      d,
+                       tkr_especialidades e,
+                       tkr_estados_cita  ec,
+                       tkr_tipos_identificacion ti
+                 WHERE     c.id_usuario = u.id
+                       AND ti.id = u.id_tipo_identificacion
+                       AND c.id_estado_cita <> 4
+                       AND c.id_profesional = d.id
+                       AND c.id_especialidad = e.id
+                       AND ec.id = c.id_estado_cita
+                       AND c.id_usuario = v_id_usuario
+                       --AND c.id <> v_id_cita
+                 ORDER BY c.id DESC
+            );
+        EXCEPTION
+            WHEN NO_DATA_FOUND THEN
+                v_rows := '[]';
+            WHEN OTHERS THEN
+                RAISE;
+        END;
+
+        p_out_json := '{"success":true,"id_usuario":' || v_id_usuario || ',"id_cita":' || v_id_cita || ',"citas":' || NVL(v_rows, '[]') || '}';
+    EXCEPTION
+        WHEN OTHERS THEN
+            p_out_json := '{"success":false,"error":"' || REPLACE(SQLERRM, '"', '\"') || '"}';
+    END p_consultar_citas_paciente;
 
 END pkgln_automatizaciones;
 /

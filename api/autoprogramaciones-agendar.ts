@@ -56,6 +56,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({
         success: true,
         mensaje: responseJson.mensaje || 'Proceso p_agendar ejecutado correctamente.',
+        id_proceso: responseJson.id_proceso !== undefined ? responseJson.id_proceso : 10,
         atenciones_agendadas: rawList,
         resultados: resultadosNormalizados,
         totales: {
@@ -85,6 +86,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({
       success: true,
       mensaje: responseJson?.mensaje || 'Proceso p_agendar ejecutado correctamente.',
+      id_proceso: responseJson && responseJson.id_proceso !== undefined ? responseJson.id_proceso : 10,
       atenciones_agendadas: mockResultados.map(r => ({
         id_especialidad: r.id_especialidad,
         nombre_especialidad: r.nombre_especialidad,
@@ -122,6 +124,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       success: true,
       isMock: true,
       mensaje: 'Proceso p_agendar ejecutado correctamente.',
+      id_proceso: 10,
       atenciones_agendadas: mockResultados.map(r => ({
         id_especialidad: r.id_especialidad,
         nombre_especialidad: r.nombre_especialidad,
