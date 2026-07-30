@@ -47,6 +47,11 @@ CREATE OR REPLACE PACKAGE pkgln_automatizaciones AS
     PROCEDURE p_obtener_catalogos (
         p_out_json OUT CLOB
     );
+
+    PROCEDURE p_eliminar_cargue (
+        p_in_json  IN  CLOB,
+        p_out_json OUT CLOB
+    );
 END pkgln_automatizaciones;
 /
 
@@ -60,15 +65,21 @@ CREATE OR REPLACE PACKAGE BODY pkgln_automatizaciones AS
         v_tiene_encabezado   VARCHAR2(1);
         v_usuario            VARCHAR2(200);
         v_id_usuario         NUMBER;
-        v_id_temp_cargue     NUMBER;
+        v_id_entidad                NUMBER;
+        v_id_convenio               NUMBER;
+        v_id_regimen_aseguramiento  NUMBER;
+        v_id_temp_cargue            NUMBER;
     BEGIN
         -- Forzar punto como separador decimal para JSON
         EXECUTE IMMEDIATE 'ALTER SESSION SET NLS_NUMERIC_CHARACTERS = ''.,''';
 
         -- 1. Parsear los datos de cabecera
-        v_nombre_archivo   := JSON_VALUE(p_in_json, '$.nombre_archivo');
-        v_tiene_encabezado := NVL(JSON_VALUE(p_in_json, '$.tiene_encabezado'), 'S');
-        v_usuario          := JSON_VALUE(p_in_json, '$.usuario');
+        v_nombre_archivo           := JSON_VALUE(p_in_json, '$.nombre_archivo');
+        v_tiene_encabezado         := NVL(JSON_VALUE(p_in_json, '$.tiene_encabezado'), 'S');
+        v_usuario                  := JSON_VALUE(p_in_json, '$.usuario');
+        v_id_entidad               := JSON_VALUE(p_in_json, '$.id_entidad');
+        v_id_convenio              := JSON_VALUE(p_in_json, '$.id_convenio');
+        v_id_regimen_aseguramiento := JSON_VALUE(p_in_json, '$.id_regimen_aseguramiento');
 
         -- 2. Resolver el ID del usuario
         BEGIN
@@ -86,12 +97,18 @@ CREATE OR REPLACE PACKAGE BODY pkgln_automatizaciones AS
             nombre_archivo,
             id_usuario_cargue,
             tiene_encabezado,
-            estado
+            estado,
+            id_entidad,
+            id_convenio,
+            id_regimen_aseguramiento
         ) VALUES (
             v_nombre_archivo,
             v_id_usuario,
             v_tiene_encabezado,
-            'C'
+            'C',
+            v_id_entidad,
+            v_id_convenio,
+            v_id_regimen_aseguramiento
         ) RETURNING id INTO v_id_temp_cargue;
 
         -- 4. Insertar los detalles usando json_table
@@ -293,13 +310,17 @@ CREATE OR REPLACE PACKAGE BODY pkgln_automatizaciones AS
             'cargues' VALUE (
                 SELECT JSON_ARRAYAGG(
                     JSON_OBJECT(
-                        'id'             VALUE id,
-                        'nombre_archivo' VALUE nombre_archivo,
-                        'fecha_cargue'   VALUE TO_CHAR(fecha_cargue, 'YYYY-MM-DD HH24:MI:SS'),
-                        'tiene_encabezado' VALUE tiene_encabezado,
-                        'estado'         VALUE estado,
-                        'exitosos'       VALUE exitosos,
-                        'errores'        VALUE errores
+                        'id'                       VALUE c.id,
+                        'nombre_archivo'           VALUE c.nombre_archivo,
+                        'fecha_cargue'             VALUE TO_CHAR(c.fecha_cargue, 'YYYY-MM-DD HH24:MI:SS'),
+                        'tiene_encabezado'         VALUE c.tiene_encabezado,
+                        'estado'                   VALUE c.estado,
+                        'id_entidad'               VALUE c.id_entidad,
+                        'id_convenio'              VALUE c.id_convenio,
+                        'id_regimen_aseguramiento' VALUE c.id_regimen_aseguramiento,
+                        'usuario'                  VALUE (SELECT u.usuario FROM tkr_usuarios u WHERE u.id = c.id_usuario_cargue AND ROWNUM = 1),
+                        'exitosos'                 VALUE c.exitosos,
+                        'errores'                  VALUE c.errores
                     )
                     RETURNING CLOB
                 )
@@ -307,7 +328,7 @@ CREATE OR REPLACE PACKAGE BODY pkgln_automatizaciones AS
                     SELECT * 
                     FROM tkr_temp_cargue 
                     ORDER BY id DESC
-                )
+                ) c
             )
             RETURNING CLOB
         )
@@ -1526,6 +1547,39 @@ CREATE OR REPLACE PACKAGE BODY pkgln_automatizaciones AS
         WHEN OTHERS THEN
             p_out_json := '{"success":false,"error":"' || REPLACE(SQLERRM, '"', '\"') || '"}';
     END p_consultar_citas_paciente;
+
+    PROCEDURE p_eliminar_cargue (
+        p_in_json  IN  CLOB,
+        p_out_json OUT CLOB
+    ) AS
+        v_id_temp_cargue NUMBER;
+    BEGIN
+        -- Forzar punto como separador decimal para JSON
+        EXECUTE IMMEDIATE 'ALTER SESSION SET NLS_NUMERIC_CHARACTERS = ''.,''';
+
+        v_id_temp_cargue := JSON_VALUE(p_in_json, '$.id_temp_cargue');
+
+        IF v_id_temp_cargue IS NULL THEN
+            p_out_json := '{"success":false,"error":"Debe especificar id_temp_cargue."}';
+            RETURN;
+        END IF;
+
+        -- 1. Eliminar registros de detalle
+        DELETE FROM tkr_temp_detalle_cargue
+        WHERE id_temp_cargue = v_id_temp_cargue;
+
+        -- 2. Eliminar registro de cabecera
+        DELETE FROM tkr_temp_cargue
+        WHERE id = v_id_temp_cargue;
+
+        COMMIT;
+
+        p_out_json := '{"success":true,"message":"Cargue y sus detalles eliminados correctamente."}';
+    EXCEPTION
+        WHEN OTHERS THEN
+            ROLLBACK;
+            p_out_json := '{"success":false,"error":"' || REPLACE(SQLERRM, '"', '\"') || '"}';
+    END p_eliminar_cargue;
 
 END pkgln_automatizaciones;
 /

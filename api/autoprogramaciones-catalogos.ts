@@ -34,9 +34,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       label: 'Coomeva MP Reg. Cali',
       url_logo: 'https://tekerapp.maxapex.net/FILES_DEV_TEKER/coomeva_mp.png',
       entidades_hijas: [
-        { id: 45, nombre_entidad: 'Coomeva MP CALI' },
-        { id: 42, nombre_entidad: 'Coomeva MP Cali Vive al 100' },
-        { id: 44, nombre_entidad: 'Coomeva MP Salud Mental' }
+        { id: 45, id_convenio: 101, nombre_entidad: 'Coomeva MP CALI' },
+        { id: 42, id_convenio: 102, nombre_entidad: 'Coomeva MP Cali Vive al 100' },
+        { id: 44, id_convenio: 103, nombre_entidad: 'Coomeva MP Salud Mental' }
       ]
     },
     {
@@ -44,7 +44,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       label: 'TEKER SALUD S.A.S',
       url_logo: 'https://dev.tekerapp.co/assets/logo.svg',
       entidades_hijas: [
-        { id: 0, nombre_entidad: 'TEKER SALUD S.A.S' }
+        { id: 0, id_convenio: 200, nombre_entidad: 'TEKER SALUD S.A.S' }
       ]
     },
     {
@@ -52,8 +52,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       label: 'SURA EPS Regional Occidente',
       url_logo: 'https://dev.tekerapp.co/assets/logo.svg',
       entidades_hijas: [
-        { id: 81, nombre_entidad: 'Sura Medicina Prepagada' },
-        { id: 82, nombre_entidad: 'Sura Plan Complementario' }
+        { id: 81, id_convenio: 301, nombre_entidad: 'Sura Medicina Prepagada' },
+        { id: 82, id_convenio: 302, nombre_entidad: 'Sura Plan Complementario' }
       ]
     }
   ];

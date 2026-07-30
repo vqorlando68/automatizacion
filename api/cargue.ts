@@ -7,7 +7,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'Método no permitido' });
   }
 
-  const { nombre_archivo, tiene_encabezado, usuario, rows } = req.body;
+  const { nombre_archivo, tiene_encabezado, usuario, rows, id_entidad, id_convenio, id_regimen_aseguramiento } = req.body;
 
   if (!nombre_archivo || !usuario || !rows || !Array.isArray(rows)) {
     return res.status(400).json({ error: 'Faltan parámetros obligatorios.' });
@@ -18,6 +18,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       nombre_archivo,
       tiene_encabezado: tiene_encabezado || 'S',
       usuario,
+      id_entidad: id_entidad ? Number(id_entidad) : null,
+      id_convenio: id_convenio ? Number(id_convenio) : null,
+      id_regimen_aseguramiento: id_regimen_aseguramiento ? Number(id_regimen_aseguramiento) : null,
       rows,
     });
 

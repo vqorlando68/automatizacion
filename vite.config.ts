@@ -68,4 +68,9 @@ const vercelApiPlugin = () => ({
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss(), vercelApiPlugin()],
+  server: {
+    hmr: {
+      overlay: false
+    }
+  }
 })

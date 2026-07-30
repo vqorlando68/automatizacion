@@ -16,6 +16,19 @@ type Tab = 'cargue' | 'crear_usuarios' | 'autoprogramaciones';
 type WizardStep = '1' | '2_text' | '2_excel' | '3' | '4';
 type UserWizardStep = '1' | '2' | '3' | '4' | '5';
 
+interface EntidadHijaCatalog {
+  id: number;
+  id_convenio?: number;
+  nombre_entidad: string;
+}
+
+interface EntidadCatalog {
+  id: number;
+  label: string;
+  url_logo?: string;
+  entidades_hijas: EntidadHijaCatalog[];
+}
+
 // Lista completa de columnas de la tabla tkr_usuarios
 const TKR_USUARIOS_COLUMNS: Omit<FieldMapping, 'columna_origen'>[] = [
   { campo_destino: 'nombres', label: 'Nombres', tipo: 'VARCHAR2', required: true },
@@ -145,6 +158,98 @@ function App() {
   const [loadedRows, setLoadedRows] = useState<any[]>([]);
   const [loadingDetails, setLoadingDetails] = useState(false);
 
+  // Catálogos para selección de Entidad, Convenio y Régimen en el Asistente de Cargue
+  const [entidadesCatalog, setEntidadesCatalog] = useState<EntidadCatalog[]>([]);
+  const [selectedEntidadId, setSelectedEntidadId] = useState<string>('');
+  const [selectedConvenioId, setSelectedConvenioId] = useState<string>('');
+  const [regimenesCatalog, setRegimenesCatalog] = useState<{ id: number; descripcion: string }[]>([]);
+  const [selectedRegimenId, setSelectedRegimenId] = useState<string>('');
+  const [loadingCatalogosApp, setLoadingCatalogosApp] = useState(false);
+  const [step1Error, setStep1Error] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (user) {
+      fetchCatalogosApp();
+    }
+  }, [user]);
+
+  const fetchCatalogosApp = async () => {
+    setLoadingCatalogosApp(true);
+    try {
+      const res = await fetch('/api/autoprogramaciones-catalogos');
+      const data = await res.json();
+      if (res.ok && data.success && Array.isArray(data.entidades)) {
+        setEntidadesCatalog(data.entidades);
+      }
+
+      const resReg = await fetch('/api/regimenes-aseguramiento');
+      const dataReg = await resReg.json();
+      if (resReg.ok && dataReg.success && Array.isArray(dataReg.regimenes)) {
+        setRegimenesCatalog(dataReg.regimenes);
+      }
+    } catch (err) {
+      console.error('Error al cargar catálogos:', err);
+    } finally {
+      setLoadingCatalogosApp(false);
+    }
+  };
+
+  const conveniosDisponibles = useMemo(() => {
+    if (!selectedEntidadId) return [];
+    const ent = entidadesCatalog.find(e => String(e.id) === String(selectedEntidadId));
+    return ent?.entidades_hijas || [];
+  }, [entidadesCatalog, selectedEntidadId]);
+
+  // Filtrar solo entidades que tienen al menos un convenio (entidades_hijas)
+  const entidadesConConvenio = useMemo(() => {
+    return entidadesCatalog.filter(ent => Array.isArray(ent.entidades_hijas) && ent.entidades_hijas.length > 0);
+  }, [entidadesCatalog]);
+
+  const getCargueEntidadLabel = (cargue?: UploadedCargue) => {
+    if (!cargue) return 'N/A';
+    if (cargue.nombre_entidad) return cargue.nombre_entidad;
+    if (cargue.id_entidad !== undefined && cargue.id_entidad !== null) {
+      const ent = entidadesCatalog.find(e => String(e.id) === String(cargue.id_entidad));
+      if (ent) return ent.label;
+      return `ID #${cargue.id_entidad}`;
+    }
+    return 'No especificada';
+  };
+
+  const getCargueConvenioLabel = (cargue?: UploadedCargue) => {
+    if (!cargue) return 'N/A';
+    if (cargue.nombre_convenio) return cargue.nombre_convenio;
+    if (cargue.id_convenio !== undefined && cargue.id_convenio !== null) {
+      for (const ent of entidadesCatalog) {
+        const conv = ent.entidades_hijas?.find(c => String(c.id_convenio ?? c.id) === String(cargue.id_convenio));
+        if (conv) return conv.nombre_entidad;
+      }
+      return `ID #${cargue.id_convenio}`;
+    }
+    return 'No especificado';
+  };
+
+  const getCargueRegimenLabel = (cargue?: UploadedCargue) => {
+    if (!cargue) return 'N/A';
+    if (cargue.nombre_regimen) return cargue.nombre_regimen;
+    if (cargue.id_regimen_aseguramiento !== undefined && cargue.id_regimen_aseguramiento !== null) {
+      const reg = regimenesCatalog.find(r => String(r.id) === String(cargue.id_regimen_aseguramiento));
+      if (reg) return reg.descripcion;
+      return `ID #${cargue.id_regimen_aseguramiento}`;
+    }
+    return 'No especificado';
+  };
+
+  // --- Estados de Sub-pestaña y Eliminación en Cargue ---
+  const [cargueSubTab, setCargueSubTab] = useState<'nuevo' | 'historial'>('nuevo');
+  const [historialCargueId, setHistorialCargueId] = useState<string>('');
+  const [historialRows, setHistorialRows] = useState<any[]>([]);
+  const [loadingHistorialDetails, setLoadingHistorialDetails] = useState(false);
+  const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
+  const [deletingCargue, setDeletingCargue] = useState(false);
+  const [deleteSuccessMsg, setDeleteSuccessMsg] = useState<string | null>(null);
+  const [deleteErrorMsg, setDeleteErrorMsg] = useState<string | null>(null);
+
   // --- Estados del Asistente de Crear Usuarios ---
   const [userWizardStep, setUserWizardStep] = useState<UserWizardStep>('1');
   const [carguesList, setCarguesList] = useState<UploadedCargue[]>([]);
@@ -253,6 +358,15 @@ function App() {
   const [foreignTable, setForeignTable] = useState<string>('');
   const [foreignRows, setForeignRows] = useState<Array<any>>([]);
 
+  const initialDraftMappings = useMemo(() => {
+    if (!uniqueModalCampoDestino) return {};
+    const mapping = userMappings.find(m => m.campo_destino === uniqueModalCampoDestino);
+    const existingVals = mapping?.homologacion?.valores || [];
+    const draft: Record<string, string> = {};
+    existingVals.forEach(v => { draft[v.origen] = v.destino; });
+    return draft;
+  }, [uniqueModalCampoDestino, userMappings]);
+
   // Load foreign table rows when modal opens for a field with foreign table
   useEffect(() => {
     if (isUniqueModalOpen && uniqueModalCampoDestino) {
@@ -337,28 +451,105 @@ function App() {
     localStorage.setItem('theme', theme);
   }, [theme]);
 
-  // Cargar lista de cargues al seleccionar la pestaña correspondiente
+  // Cargar lista de cargues al seleccionar la pestaña o cambiar de sub-pestaña
   useEffect(() => {
-    if (currentTab === 'crear_usuarios' && user) {
+    if ((currentTab === 'crear_usuarios' || currentTab === 'cargue') && user) {
       fetchCargues();
     }
-  }, [currentTab, user]);
+  }, [currentTab, cargueSubTab, user]);
 
-  const fetchCargues = async () => {
+  const fetchCargues = async (preferredSelectedId?: string) => {
     setLoadingCargues(true);
     try {
       const response = await fetch('/api/cargues-lista');
       const data = await response.json();
       if (response.ok && data.success) {
-        setCarguesList(data.cargues || []);
-        if (data.cargues && data.cargues.length > 0) {
-          setSelectedCargueId(String(data.cargues[0].id));
+        const list: UploadedCargue[] = data.cargues || [];
+        setCarguesList(list);
+
+        if (list.length > 0) {
+          const targetId = preferredSelectedId && list.some(c => String(c.id) === String(preferredSelectedId))
+            ? preferredSelectedId
+            : (historialCargueId && list.some(c => String(c.id) === String(historialCargueId)))
+              ? historialCargueId
+              : String(list[0].id);
+
+          if (!selectedCargueId || !list.some(c => String(c.id) === String(selectedCargueId))) {
+            setSelectedCargueId(targetId);
+          }
+
+          // Cargar automáticamente los datos del cargue en la vista de Historial
+          handleSelectHistorialCargue(targetId);
+        } else {
+          setHistorialCargueId('');
+          setHistorialRows([]);
         }
       }
     } catch (err) {
       console.error('Error al cargar lista de archivos:', err);
     } finally {
       setLoadingCargues(false);
+    }
+  };
+
+  const handleSelectHistorialCargue = async (cargueIdStr: string) => {
+    setHistorialCargueId(cargueIdStr);
+    if (!cargueIdStr) {
+      setHistorialRows([]);
+      return;
+    }
+    setLoadingHistorialDetails(true);
+    setDeleteErrorMsg(null);
+    try {
+      const response = await fetch('/api/cargue-detalle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id_temp_cargue: Number(cargueIdStr) }),
+      });
+      const data = await response.json();
+      if (response.ok && data.success) {
+        setHistorialRows(data.rows || []);
+      } else {
+        setHistorialRows([]);
+      }
+    } catch (err) {
+      console.error('Error al consultar detalle del historial:', err);
+      setHistorialRows([]);
+    } finally {
+      setLoadingHistorialDetails(false);
+    }
+  };
+
+  const handleExecuteDeleteCargue = async () => {
+    if (!historialCargueId) return;
+    setDeletingCargue(true);
+    setDeleteErrorMsg(null);
+    setDeleteSuccessMsg(null);
+
+    try {
+      const response = await fetch('/api/cargue-eliminar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id_temp_cargue: Number(historialCargueId) }),
+      });
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        setDeleteSuccessMsg(`El cargue #${historialCargueId} fue eliminado exitosamente junto con sus registros.`);
+        setShowDeleteConfirmModal(false);
+        setHistorialCargueId('');
+        setHistorialRows([]);
+        await fetchCargues();
+      } else {
+        setDeleteErrorMsg(data.error || 'Ocurrió un error al intentar eliminar el cargue.');
+        setShowDeleteConfirmModal(false);
+      }
+    } catch (err: any) {
+      console.error('Error al eliminar cargue:', err);
+      setDeleteErrorMsg('Error de conexión al eliminar el cargue.');
+      setShowDeleteConfirmModal(false);
+    } finally {
+      setDeletingCargue(false);
     }
   };
 
@@ -425,6 +616,10 @@ function App() {
     setExcelWorkbook(null);
     setPreviewRows([]);
     setAllParsedRows([]);
+    setSelectedEntidadId('');
+    setSelectedConvenioId('');
+    setSelectedRegimenId('');
+    setStep1Error(null);
     setUploadError(null);
     setUploadSuccessId(null);
     setLoadedRows([]);
@@ -433,6 +628,20 @@ function App() {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
+
+    // Validación de campos obligatorios en el Paso 1
+    const faltantes: string[] = [];
+    if (!selectedEntidadId) faltantes.push('Entidad');
+    if (!selectedConvenioId) faltantes.push('Convenio');
+    if (!selectedRegimenId) faltantes.push('Régimen de Aseguramiento');
+
+    if (faltantes.length > 0) {
+      setStep1Error(`Debe seleccionar todos los campos obligatorios antes de avanzar: ${faltantes.join(', ')}.`);
+      e.target.value = '';
+      return;
+    }
+
+    setStep1Error(null);
     const file = files[0];
     setSelectedFile(file);
 
@@ -496,6 +705,12 @@ function App() {
 
   const handleUploadToOracle = async () => {
     if (!selectedFile || allParsedRows.length === 0 || !user) return;
+
+    if (!selectedEntidadId || !selectedConvenioId || !selectedRegimenId) {
+      setUploadError('Por favor, selecciona la Entidad, el Convenio y el Régimen de Aseguramiento antes de procesar la carga.');
+      return;
+    }
+
     setUploading(true);
     setUploadError(null);
 
@@ -507,6 +722,9 @@ function App() {
           nombre_archivo: selectedFile.name,
           tiene_encabezado: hasHeader ? 'S' : 'N',
           usuario: user,
+          id_entidad: Number(selectedEntidadId),
+          id_convenio: Number(selectedConvenioId),
+          id_regimen_aseguramiento: Number(selectedRegimenId),
           rows: allParsedRows,
         }),
       });
@@ -514,9 +732,12 @@ function App() {
       const data = await response.json();
 
       if (response.ok && data.success) {
+        const newCargueId = String(data.id_temp_cargue);
         setUploadSuccessId(data.id_temp_cargue);
         setWizardStep('4');
         fetchLoadedDetails(data.id_temp_cargue);
+        // Refrescar inmediatamente la lista de cargues y pre-seleccionar el nuevo cargue para la pestaña Historial
+        fetchCargues(newCargueId);
       } else {
         setUploadError(data.error || 'Error al guardar los datos en la base de datos Oracle.');
       }
@@ -1038,7 +1259,6 @@ function App() {
 
           {/* Panel Principal */}
           <main className="flex-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 rounded-2xl p-8 shadow-sm flex flex-col justify-between overflow-y-auto">
-            
             {/* Contenido Dinámico por Pestaña */}
             <div className="space-y-6">
               
@@ -1049,50 +1269,211 @@ function App() {
               
 
 
-              {/* --- CONTENIDO: CARGUE (ASISTENTE / WIZARD) --- */}
+              {/* --- CONTENIDO: CARGUE (ASISTENTE / WIZARD & HISTORIAL) --- */}
               {currentTab === 'cargue' && (
                 <div className="space-y-6">
-                  <div>
-                    <h2 className="text-2xl font-black tracking-tight text-slate-900 dark:text-white">
-                      Asistente de Cargue de Archivos
-                    </h2>
-                    <p className="text-slate-500 dark:text-slate-400 text-sm mt-1 leading-relaxed">
-                      Carga y estructura datos masivos directamente en las tablas de Oracle Database.
-                    </p>
+                  {/* Encabezado y Selector de Sub-pestañas */}
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-200 dark:border-slate-800/80 pb-4">
+                    <div>
+                      <h2 className="text-2xl font-black tracking-tight text-slate-900 dark:text-white">
+                        {cargueSubTab === 'nuevo' ? 'Asistente de Cargue de Archivos' : 'Historial y Administración de Cargues'}
+                      </h2>
+                      <p className="text-slate-500 dark:text-slate-400 text-sm mt-0.5 leading-relaxed">
+                        {cargueSubTab === 'nuevo'
+                          ? 'Carga y estructura datos masivos directamente en las tablas de Oracle Database.'
+                          : 'Consulta cargues almacenados previamente, examina sus datos o elimínalos de la base de datos.'}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center bg-slate-100 dark:bg-slate-950 p-1 rounded-xl border border-slate-200 dark:border-slate-800">
+                      <button
+                        onClick={() => setCargueSubTab('nuevo')}
+                        className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                          cargueSubTab === 'nuevo'
+                            ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                            : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                        }`}
+                      >
+                        ➕ Nuevo Cargue
+                      </button>
+                      <button
+                        onClick={() => {
+                          setCargueSubTab('historial');
+                          fetchCargues();
+                        }}
+                        className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                          cargueSubTab === 'historial'
+                            ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                            : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                        }`}
+                      >
+                        🗂️ Historial / Borrar Cargue
+                      </button>
+                    </div>
                   </div>
 
-                  {/* Pasos del Wizard */}
-                  <div className="flex items-center gap-3 bg-slate-50 dark:bg-slate-950 p-4 border border-slate-200 dark:border-slate-800 rounded-xl mb-4">
-                    <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${wizardStep === '1' ? 'bg-indigo-600 text-white' : 'bg-slate-200 dark:bg-slate-800 text-slate-600'}`}>1</span>
-                    <span className="text-xs text-slate-400">Seleccionar Archivo</span>
-                    <span className="text-slate-300">→</span>
-                    <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${wizardStep.startsWith('2') ? 'bg-indigo-600 text-white' : 'bg-slate-200 dark:bg-slate-800 text-slate-600'}`}>2</span>
-                    <span className="text-xs text-slate-400">Configuración</span>
-                    <span className="text-slate-300">→</span>
-                    <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${wizardStep === '3' ? 'bg-indigo-600 text-white' : 'bg-slate-200 dark:bg-slate-800 text-slate-600'}`}>3</span>
-                    <span className="text-xs text-slate-400">Verificación</span>
-                    <span className="text-slate-300">→</span>
-                    <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${wizardStep === '4' ? 'bg-indigo-600 text-white' : 'bg-slate-200 dark:bg-slate-800 text-slate-600'}`}>4</span>
-                    <span className="text-xs text-slate-400">Resultado</span>
-                  </div>
+                  {cargueSubTab === 'nuevo' && (
+                    <div className="space-y-6">
+                      {/* Pasos del Wizard */}
+                      <div className="flex items-center gap-3 bg-slate-50 dark:bg-slate-950 p-4 border border-slate-200 dark:border-slate-800 rounded-xl mb-4">
+                        <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${wizardStep === '1' ? 'bg-indigo-600 text-white' : 'bg-slate-200 dark:bg-slate-800 text-slate-600'}`}>1</span>
+                        <span className="text-xs text-slate-400">Seleccionar Archivo</span>
+                        <span className="text-slate-300">→</span>
+                        <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${wizardStep.startsWith('2') ? 'bg-indigo-600 text-white' : 'bg-slate-200 dark:bg-slate-800 text-slate-600'}`}>2</span>
+                        <span className="text-xs text-slate-400">Configuración</span>
+                        <span className="text-slate-300">→</span>
+                        <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${wizardStep === '3' ? 'bg-indigo-600 text-white' : 'bg-slate-200 dark:bg-slate-800 text-slate-600'}`}>3</span>
+                        <span className="text-xs text-slate-400">Verificación</span>
+                        <span className="text-slate-300">→</span>
+                        <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${wizardStep === '4' ? 'bg-indigo-600 text-white' : 'bg-slate-200 dark:bg-slate-800 text-slate-600'}`}>4</span>
+                        <span className="text-xs text-slate-400">Resultado</span>
+                      </div>
 
                   {/* PASO 1: Seleccionar Archivo */}
                   {wizardStep === '1' && (
-                    <div className="border-2 border-dashed border-slate-200 dark:border-slate-800 hover:border-indigo-500 rounded-2xl p-12 text-center transition-all relative group flex flex-col items-center justify-center gap-4">
-                      <span className="text-4xl">📁</span>
-                      <div>
-                        <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200">Selecciona tu archivo de datos</h3>
-                        <p className="text-xs text-slate-400 mt-1">Soporta formatos delimitados (.csv, .txt) o plantillas Excel (.xlsx, .xls)</p>
+                    <div className="space-y-6">
+                      {step1Error && (
+                        <div className="p-4 bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 rounded-xl text-xs flex items-center justify-between animate-in fade-in">
+                          <div className="flex items-center gap-2">
+                            <span className="text-base">⚠️</span>
+                            <span className="font-semibold">{step1Error}</span>
+                          </div>
+                          <button onClick={() => setStep1Error(null)} className="text-red-500 hover:text-red-700 font-bold cursor-pointer">✕</button>
+                        </div>
+                      )}
+
+                      {/* Selección de Entidad y Convenio */}
+                      <div className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-6">
+                        <div className="flex items-center justify-between mb-4">
+                          <div>
+                            <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200">
+                              Información de Entidad y Convenio
+                            </h3>
+                            <p className="text-xs text-slate-400 mt-0.5">
+                              Selecciona la entidad y el convenio correspondientes a los datos que vas a cargar.
+                            </p>
+                          </div>
+                          {loadingCatalogosApp && (
+                            <span className="text-xs text-indigo-500 font-medium animate-pulse">Cargando catálogos...</span>
+                          )}
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                          <div>
+                            <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-2">
+                              Entidad <span className="text-red-500">*</span>
+                            </label>
+                            <select
+                              value={selectedEntidadId}
+                              onChange={(e) => {
+                                const entId = e.target.value;
+                                setSelectedEntidadId(entId);
+                                setStep1Error(null);
+                                const ent = entidadesConConvenio.find((item) => String(item.id) === String(entId));
+                                const firstConvenio = ent?.entidades_hijas?.[0];
+                                const convVal = firstConvenio ? String(firstConvenio.id_convenio ?? firstConvenio.id) : '';
+                                setSelectedConvenioId(convVal);
+                              }}
+                              className="w-full px-3 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-sm focus:outline-none focus:border-indigo-500 text-slate-900 dark:text-white"
+                            >
+                              <option value="">-- Seleccionar Entidad --</option>
+                              {entidadesConConvenio.map((ent) => (
+                                <option key={ent.id} value={ent.id}>
+                                  {ent.label}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-2">
+                              Convenio <span className="text-red-500">*</span>
+                            </label>
+                            <select
+                              value={selectedConvenioId}
+                              onChange={(e) => {
+                                setSelectedConvenioId(e.target.value);
+                                setStep1Error(null);
+                              }}
+                              disabled={!selectedEntidadId}
+                              className="w-full px-3 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-sm focus:outline-none focus:border-indigo-500 text-slate-900 dark:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              <option value="">-- Seleccionar Convenio --</option>
+                              {conveniosDisponibles.map((conv) => {
+                                const convIdVal = String(conv.id_convenio ?? conv.id);
+                                return (
+                                  <option key={conv.id + '_' + convIdVal} value={convIdVal}>
+                                    {conv.nombre_entidad}
+                                  </option>
+                                );
+                              })}
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-2">
+                              Régimen de Aseguramiento <span className="text-red-500">*</span>
+                            </label>
+                            <select
+                              value={selectedRegimenId}
+                              onChange={(e) => {
+                                setSelectedRegimenId(e.target.value);
+                                setStep1Error(null);
+                              }}
+                              className="w-full px-3 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-sm focus:outline-none focus:border-indigo-500 text-slate-900 dark:text-white"
+                            >
+                              <option value="">-- Seleccionar Régimen --</option>
+                              {regimenesCatalog.map((r) => (
+                                <option key={r.id} value={r.id}>
+                                  {r.descripcion}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+
+                        {/* Opción de Encabezado */}
+                        <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-800/80">
+                          <label className="flex items-center gap-3 cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              checked={hasHeader}
+                              onChange={(e) => setHasHeader(e.target.checked)}
+                              className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 dark:border-slate-700 dark:bg-slate-900"
+                            />
+                            <div className="text-xs">
+                              <span className="font-bold block text-slate-700 dark:text-slate-300">¿El archivo tiene Encabezado?</span>
+                              <span className="text-slate-400">La primera línea contiene el nombre de cada columna (se almacenará en tiene_encabezado).</span>
+                            </div>
+                          </label>
+                        </div>
                       </div>
-                      <label className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-xl cursor-pointer active:scale-95 transition-all shadow-sm">
-                        Examinar Archivos
-                        <input
-                          type="file"
-                          accept=".csv,.txt,.xlsx,.xls"
-                          onChange={handleFileChange}
-                          className="hidden"
-                        />
-                      </label>
+
+                      {/* Dropzone para cargar archivo */}
+                      <div className={`border-2 border-dashed border-slate-200 dark:border-slate-800 hover:border-indigo-500 rounded-2xl p-10 text-center transition-all relative group flex flex-col items-center justify-center gap-4 ${(!selectedEntidadId || !selectedConvenioId || !selectedRegimenId) ? 'opacity-60' : ''}`}>
+                        <span className="text-4xl">📁</span>
+                        <div>
+                          <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200">Selecciona tu archivo de datos</h3>
+                          <p className="text-xs text-slate-400 mt-1">Soporta formatos delimitados (.csv, .txt) o plantillas Excel (.xlsx, .xls)</p>
+                        </div>
+
+                        {(!selectedEntidadId || !selectedConvenioId || !selectedRegimenId) ? (
+                          <p className="text-xs font-medium text-amber-600 dark:text-amber-400 bg-amber-500/10 px-3 py-1.5 rounded-lg border border-amber-500/20">
+                            ⚠️ Selecciona la Entidad, el Convenio y el Régimen de Aseguramiento para habilitar la carga.
+                          </p>
+                        ) : null}
+
+                        <label className={`px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-xl cursor-pointer active:scale-95 transition-all shadow-sm ${(!selectedEntidadId || !selectedConvenioId || !selectedRegimenId) ? 'pointer-events-none opacity-50' : ''}`}>
+                          Examinar Archivos
+                          <input
+                            type="file"
+                            accept=".csv,.txt,.xlsx,.xls"
+                            onChange={handleFileChange}
+                            disabled={!selectedEntidadId || !selectedConvenioId || !selectedRegimenId}
+                            className="hidden"
+                          />
+                        </label>
+                      </div>
                     </div>
                   )}
 
@@ -1156,19 +1537,36 @@ function App() {
                         <p className="text-xs text-slate-400 mt-0.5">Selecciona de qué hoja deseas extraer la información.</p>
                       </div>
 
-                      <div className="max-w-md">
-                        <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-2">
-                          Nombre de la Hoja
-                        </label>
-                        <select
-                          value={selectedSheet}
-                          onChange={(e) => setSelectedSheet(e.target.value)}
-                          className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-sm focus:outline-none focus:border-indigo-500 text-slate-900 dark:text-white"
-                        >
-                          {sheetNames.map((name) => (
-                            <option key={name} value={name}>{name}</option>
-                          ))}
-                        </select>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-2">
+                            Nombre de la Hoja
+                          </label>
+                          <select
+                            value={selectedSheet}
+                            onChange={(e) => setSelectedSheet(e.target.value)}
+                            className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-sm focus:outline-none focus:border-indigo-500 text-slate-900 dark:text-white"
+                          >
+                            {sheetNames.map((name) => (
+                              <option key={name} value={name}>{name}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="flex items-center pt-6">
+                          <label className="flex items-center gap-3 cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              checked={hasHeader}
+                              onChange={(e) => setHasHeader(e.target.checked)}
+                              className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300"
+                            />
+                            <div className="text-xs">
+                              <span className="font-bold block text-slate-700 dark:text-slate-300">¿Tiene Encabezado?</span>
+                              <span className="text-slate-400">La primera fila contiene el nombre de cada columna.</span>
+                            </div>
+                          </label>
+                        </div>
                       </div>
 
                       <div className="flex justify-between items-center pt-4 border-t border-slate-200 dark:border-slate-800">
@@ -1332,6 +1730,202 @@ function App() {
                           </div>
                         )}
                       </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+                  {/* VISTA: HISTORIAL Y ELIMINACIÓN DE CARGUES */}
+                  {cargueSubTab === 'historial' && (
+                    <div className="space-y-6">
+                      {deleteSuccessMsg && (
+                        <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 rounded-xl text-xs flex items-center justify-between">
+                          <span className="font-semibold">✅ {deleteSuccessMsg}</span>
+                          <button onClick={() => setDeleteSuccessMsg(null)} className="text-emerald-500 hover:text-emerald-700 font-bold cursor-pointer">✕</button>
+                        </div>
+                      )}
+
+                      {deleteErrorMsg && (
+                        <div className="p-4 bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 rounded-xl text-xs flex items-center justify-between">
+                          <span className="font-semibold">⚠️ {deleteErrorMsg}</span>
+                          <button onClick={() => setDeleteErrorMsg(null)} className="text-red-500 hover:text-red-700 font-bold cursor-pointer">✕</button>
+                        </div>
+                      )}
+
+                      {/* Selector de Cargue e información general */}
+                      <div className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-6">
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                          <div className="flex-1 w-full sm:w-auto">
+                            <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-2">
+                              Seleccionar Cargue Realizado
+                            </label>
+                            <select
+                              value={historialCargueId}
+                              onChange={(e) => handleSelectHistorialCargue(e.target.value)}
+                              className="w-full px-3 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-sm focus:outline-none focus:border-indigo-500 text-slate-900 dark:text-white"
+                            >
+                              <option value="">-- Selecciona un cargue --</option>
+                              {carguesList.map((cargue) => (
+                                <option key={cargue.id} value={cargue.id}>
+                                  Cargue #{cargue.id} - {cargue.nombre_archivo} ({cargue.fecha_cargue || 'Fecha N/A'})
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          {historialCargueId && (
+                            <div className="pt-2 sm:pt-6">
+                              <button
+                                onClick={() => setShowDeleteConfirmModal(true)}
+                                className="px-4 py-2.5 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded-xl cursor-pointer active:scale-95 transition-all shadow-sm flex items-center gap-2"
+                              >
+                                <span>🗑️</span>
+                                <span>Eliminar Cargue #{historialCargueId}</span>
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Vista de datos del cargue e Información Detallada */}
+                      {historialCargueId && (
+                        <div className="space-y-6">
+                          {/* Panel de Metadatos del Cargue */}
+                          {(() => {
+                            const selectedHistorialCargue = carguesList.find(c => String(c.id) === String(historialCargueId));
+                            if (!selectedHistorialCargue) return null;
+                            return (
+                              <div className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 space-y-4 animate-in fade-in">
+                                <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+                                  <div className="flex items-center gap-2.5">
+                                    <span className="px-2.5 py-1 bg-indigo-600 text-white rounded-lg text-xs font-black shadow-xs">
+                                      ID #{selectedHistorialCargue.id}
+                                    </span>
+                                    <div>
+                                      <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+                                        {selectedHistorialCargue.nombre_archivo}
+                                      </h4>
+                                      <p className="text-[11px] text-slate-400">
+                                        Información detallada y metadatos registrados en Oracle DB
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <span className="px-3 py-1 rounded-full text-xs font-bold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
+                                    Estado: {selectedHistorialCargue.estado === 'C' ? 'Cargado' : selectedHistorialCargue.estado === 'P' ? 'Procesado' : selectedHistorialCargue.estado}
+                                  </span>
+                                </div>
+
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                                  <div className="bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200 dark:border-slate-800">
+                                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">🏥 Entidad</span>
+                                    <span className="font-semibold text-slate-800 dark:text-slate-200 truncate block" title={getCargueEntidadLabel(selectedHistorialCargue)}>
+                                      {getCargueEntidadLabel(selectedHistorialCargue)}
+                                    </span>
+                                  </div>
+
+                                  <div className="bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200 dark:border-slate-800">
+                                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">📄 Convenio</span>
+                                    <span className="font-semibold text-slate-800 dark:text-slate-200 truncate block" title={getCargueConvenioLabel(selectedHistorialCargue)}>
+                                      {getCargueConvenioLabel(selectedHistorialCargue)}
+                                    </span>
+                                  </div>
+
+                                  <div className="bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200 dark:border-slate-800">
+                                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">🛡️ Régimen</span>
+                                    <span className="font-semibold text-slate-800 dark:text-slate-200 truncate block" title={getCargueRegimenLabel(selectedHistorialCargue)}>
+                                      {getCargueRegimenLabel(selectedHistorialCargue)}
+                                    </span>
+                                  </div>
+
+                                  <div className="bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200 dark:border-slate-800">
+                                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">👤 Usuario de Carga</span>
+                                    <span className="font-semibold text-slate-800 dark:text-slate-200 truncate block">
+                                      {selectedHistorialCargue.usuario || user || 'N/A'}
+                                    </span>
+                                  </div>
+
+                                  <div className="bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200 dark:border-slate-800">
+                                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">📅 Fecha de Cargue</span>
+                                    <span className="font-semibold text-slate-800 dark:text-slate-200">
+                                      {selectedHistorialCargue.fecha_cargue || 'N/A'}
+                                    </span>
+                                  </div>
+
+                                  <div className="bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200 dark:border-slate-800">
+                                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">📌 Tiene Encabezado</span>
+                                    <span className="font-semibold text-slate-800 dark:text-slate-200">
+                                      {selectedHistorialCargue.tiene_encabezado === 'S' ? 'Sí (1ra línea es nombre)' : 'No'}
+                                    </span>
+                                  </div>
+
+                                  <div className="bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200 dark:border-slate-800">
+                                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">📊 Registros en BD</span>
+                                    <span className="font-semibold text-slate-800 dark:text-slate-200">
+                                      {historialRows.length} registros
+                                    </span>
+                                  </div>
+
+                                  <div className="bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200 dark:border-slate-800">
+                                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">📂 Nombre Archivo</span>
+                                    <span className="font-semibold text-slate-800 dark:text-slate-200 truncate block" title={selectedHistorialCargue.nombre_archivo}>
+                                      {selectedHistorialCargue.nombre_archivo}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })()}
+
+                          {/* Tabla de registros almacenados */}
+                          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 space-y-4">
+                            <div className="flex items-center justify-between">
+                              <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                                Registros Almacenados en la Tabla Temporal ({historialRows.length} registros)
+                              </h3>
+                              {loadingHistorialDetails && (
+                                <span className="text-xs text-indigo-500 font-medium animate-pulse">Cargando registros...</span>
+                              )}
+                            </div>
+
+                            <div className="overflow-x-auto border border-slate-200 dark:border-slate-800 rounded-xl max-h-[450px]">
+                              <table className="w-full border-collapse text-left text-xs">
+                                <thead className="sticky top-0 bg-slate-100 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 font-semibold z-10">
+                                  <tr>
+                                    <th className="px-4 py-3">Línea</th>
+                                    <th className="px-4 py-3">Registro Original</th>
+                                    <th className="px-4 py-3">Columna 1</th>
+                                    <th className="px-4 py-3">Columna 2</th>
+                                    <th className="px-4 py-3">Columna 3</th>
+                                    <th className="px-4 py-3">Columna 4</th>
+                                    <th className="px-4 py-3">Columna 5</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-600 dark:text-slate-300 font-mono">
+                                  {historialRows.length === 0 ? (
+                                    <tr>
+                                      <td colSpan={7} className="px-4 py-8 text-center text-slate-400 font-sans">
+                                        No hay datos disponibles para mostrar.
+                                      </td>
+                                    </tr>
+                                  ) : (
+                                    historialRows.map((row, idx) => (
+                                      <tr key={row.id || idx} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/20">
+                                        <td className="px-4 py-3 text-slate-400">{row.numero_linea || idx + 1}</td>
+                                        <td className="px-4 py-3 max-w-[200px] truncate">{row.linea}</td>
+                                        <td className="px-4 py-3 truncate">{row.c1}</td>
+                                        <td className="px-4 py-3 truncate">{row.c2}</td>
+                                        <td className="px-4 py-3 truncate">{row.c3}</td>
+                                        <td className="px-4 py-3 truncate">{row.c4}</td>
+                                        <td className="px-4 py-3 truncate">{row.c5}</td>
+                                      </tr>
+                                    ))
+                                  )}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -2544,14 +3138,7 @@ function App() {
         campoDestino={uniqueModalCampoDestino || null}
         uniqueColValues={uniqueColValues}
         initialMode={uniqueModalCampoDestino ? 'mapear' : 'ver'}
-        initialDraftMappings={useMemo(() => {
-          if (!uniqueModalCampoDestino) return {};
-          const mapping = userMappings.find(m => m.campo_destino === uniqueModalCampoDestino);
-          const existingVals = mapping?.homologacion?.valores || [];
-          const draft: Record<string, string> = {};
-          existingVals.forEach(v => { draft[v.origen] = v.destino; });
-          return draft;
-        }, [uniqueModalCampoDestino, userMappings])}
+        initialDraftMappings={initialDraftMappings}
         onApply={(nuevosValores) => {
           if (!uniqueModalCampoDestino) return;
           const mapping = userMappings.find(m => m.campo_destino === uniqueModalCampoDestino);
@@ -2566,6 +3153,79 @@ function App() {
         foreignTable={foreignTable || undefined}
         foreignRows={foreignRows}
       />
+
+      {/* Modal de Confirmación de Eliminación de Cargue */}
+      {showDeleteConfirmModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-5">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 flex items-center justify-center text-lg font-bold">
+                ⚠️
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                  ¿Confirmar eliminación del cargue?
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Esta acción eliminará permanentemente la cabecera y el detalle en la base de datos.
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800 text-xs space-y-2 font-sans">
+              <div className="flex justify-between font-mono font-bold text-slate-800 dark:text-slate-200 border-b border-slate-200 dark:border-slate-800 pb-1.5">
+                <span>Cargue ID: #{historialCargueId}</span>
+                <span>{carguesList.find(c => String(c.id) === String(historialCargueId))?.fecha_cargue || ''}</span>
+              </div>
+              <p className="text-slate-600 dark:text-slate-300 font-medium truncate">
+                📁 <strong>Archivo:</strong> {carguesList.find(c => String(c.id) === String(historialCargueId))?.nombre_archivo || 'N/A'}
+              </p>
+              <p className="text-slate-600 dark:text-slate-300 font-medium truncate">
+                🏥 <strong>Entidad:</strong> {getCargueEntidadLabel(carguesList.find(c => String(c.id) === String(historialCargueId)))}
+              </p>
+              <p className="text-slate-600 dark:text-slate-300 font-medium truncate">
+                📄 <strong>Convenio:</strong> {getCargueConvenioLabel(carguesList.find(c => String(c.id) === String(historialCargueId)))}
+              </p>
+              <p className="text-slate-600 dark:text-slate-300 font-medium truncate">
+                🛡️ <strong>Régimen:</strong> {getCargueRegimenLabel(carguesList.find(c => String(c.id) === String(historialCargueId)))}
+              </p>
+              <p className="text-slate-600 dark:text-slate-300 font-medium">
+                👤 <strong>Usuario:</strong> {carguesList.find(c => String(c.id) === String(historialCargueId))?.usuario || user || 'N/A'}
+              </p>
+              <p className="text-slate-500 dark:text-slate-400 pt-1.5 border-t border-slate-200 dark:border-slate-800 font-mono">
+                Registros a eliminar: {historialRows.length}
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                onClick={() => setShowDeleteConfirmModal(false)}
+                disabled={deletingCargue}
+                className="px-4 py-2 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold rounded-xl cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleExecuteDeleteCargue}
+                disabled={deletingCargue}
+                className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded-xl cursor-pointer active:scale-95 transition-all shadow-md flex items-center gap-2"
+              >
+                {deletingCargue ? (
+                  <>
+                    <svg className="animate-spin h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    <span>Eliminando...</span>
+                  </>
+                ) : (
+                  <span>Sí, Eliminar Cargue</span>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

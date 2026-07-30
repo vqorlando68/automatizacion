@@ -11,6 +11,15 @@ export interface UploadedCargue {
   fecha_cargue: string;
   tiene_encabezado: string;
   estado: string;
+  id_entidad?: number;
+  nombre_entidad?: string;
+  id_convenio?: number;
+  nombre_convenio?: string;
+  id_regimen_aseguramiento?: number;
+  nombre_regimen?: string;
+  usuario?: string;
+  exitosos?: number;
+  errores?: number;
 }
 
 // Estructura para el mapeo dinámico de campos y homologaciones
