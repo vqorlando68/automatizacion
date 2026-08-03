@@ -135,12 +135,14 @@ export function EquipoMedico() {
     return pacientes.filter(p => {
       const name = p.nombre_completo || '';
       const docId = p.identificacion || '';
+      const conv = p.nombre_convenio || '';
       const q = (searchPatient || '').toLowerCase();
 
       const matchSearch =
         !searchPatient.trim() ||
         name.toLowerCase().includes(q) ||
-        docId.toLowerCase().includes(q);
+        docId.toLowerCase().includes(q) ||
+        conv.toLowerCase().includes(q);
 
       const hasTeam = Array.isArray(p.profesionales_asignados) && p.profesionales_asignados.length > 0;
       if (filterTab === 'sin_asignar' && hasTeam) return false;
@@ -405,7 +407,7 @@ export function EquipoMedico() {
             <div className="relative">
               <input
                 type="text"
-                placeholder="🔍 Buscar por paciente o cédula..."
+                placeholder="🔍 Buscar por paciente, cédula o convenio..."
                 value={searchPatient}
                 onChange={e => setSearchPatient(e.target.value)}
                 className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 outline-none"

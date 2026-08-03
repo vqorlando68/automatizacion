@@ -1931,7 +1931,15 @@ CREATE OR REPLACE PACKAGE BODY pkgln_automatizaciones AS
           AND (
               v_busqueda IS NULL OR
               LOWER(u.nombres || ' ' || u.apellidos) LIKE '%' || v_busqueda || '%' OR
-              LOWER(u.identificacion) LIKE '%' || v_busqueda || '%'
+              LOWER(u.identificacion) LIKE '%' || v_busqueda || '%' OR
+              LOWER((
+                  SELECT e.nombre_entidad
+                  FROM tkr_usuarios_cohorte uc_conv
+                  JOIN tkr_convenios c ON c.id = uc_conv.id_convenio
+                  JOIN tkr_entidades e ON e.id = c.id_entidad_hijo
+                  WHERE uc_conv.id_usuario = u.id
+                    AND ROWNUM = 1
+              )) LIKE '%' || v_busqueda || '%'
           );
 
         IF v_json_pacientes IS NULL THEN
