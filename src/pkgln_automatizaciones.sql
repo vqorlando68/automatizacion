@@ -52,6 +52,29 @@ CREATE OR REPLACE PACKAGE pkgln_automatizaciones AS
         p_in_json  IN  CLOB,
         p_out_json OUT CLOB
     );
+
+    PROCEDURE p_obtener_profesionales_notificacion (
+        p_out_json OUT CLOB
+    );
+
+    PROCEDURE p_obtener_entidades_giris (
+        p_out_json OUT CLOB
+    );
+
+    PROCEDURE p_obtener_pacientes_notificacion (
+        p_in_json  IN  CLOB,
+        p_out_json OUT CLOB
+    );
+
+    PROCEDURE p_obtener_plantilla_notificacion (
+        p_in_json  IN  CLOB,
+        p_out_json OUT CLOB
+    );
+
+    PROCEDURE p_envio_notificaciones (
+        p_in_json  IN  CLOB,
+        p_out_json OUT CLOB
+    );
 END pkgln_automatizaciones;
 /
 
@@ -1580,6 +1603,268 @@ CREATE OR REPLACE PACKAGE BODY pkgln_automatizaciones AS
             ROLLBACK;
             p_out_json := '{"success":false,"error":"' || REPLACE(SQLERRM, '"', '\"') || '"}';
     END p_eliminar_cargue;
+
+    PROCEDURE p_obtener_profesionales_notificacion (
+        p_out_json OUT CLOB
+    ) AS
+        v_raw_json CLOB;
+    BEGIN
+        v_raw_json := pkgcn_varios.f_profesionales(0, 1, 5000);
+        
+        SELECT JSON_OBJECT(
+            'success' VALUE 'true',
+            'profesionales' VALUE (
+                SELECT JSON_ARRAYAGG(
+                    JSON_OBJECT(
+                        'id'                 VALUE p.id,
+                        'fullName'           VALUE p.full_name,
+                        'trabaja_festivos'   VALUE p.trabaja_festivos,
+                        'slug'               VALUE p.slug,
+                        'price'              VALUE p.price,
+                        'gender'             VALUE p.gender,
+                        'rate'               VALUE p.rate,
+                        'reviews'            VALUE p.reviews,
+                        'specialty'          VALUE JSON_QUERY(p.specialty, '$'),
+                        'days_of_service'    VALUE p.days_of_service,
+                        'img_url'            VALUE p.img_url,
+                        'specialtiesIds'     VALUE p.specialties_ids,
+                        'correo_electronico' VALUE u.correo_electronico,
+                        'telefono'           VALUE u.telefono
+                    ) RETURNING CLOB
+                )
+                FROM JSON_TABLE(
+                    v_raw_json, '$[*]'
+                    COLUMNS (
+                        id               NUMBER         PATH '$.id',
+                        full_name        VARCHAR2(200)  PATH '$.fullName',
+                        trabaja_festivos VARCHAR2(10)   PATH '$.trabaja_festivos',
+                        slug             VARCHAR2(100)  PATH '$.slug',
+                        price            NUMBER         PATH '$.price',
+                        gender           VARCHAR2(50)   PATH '$.gender',
+                        rate             NUMBER         PATH '$.rate',
+                        reviews          NUMBER         PATH '$.reviews',
+                        specialty        VARCHAR2(4000) FORMAT JSON PATH '$.specialty',
+                        days_of_service  VARCHAR2(200)  PATH '$.days_of_service',
+                        img_url          VARCHAR2(500)  PATH '$.img_url',
+                        specialties_ids  VARCHAR2(100)  PATH '$.specialtiesIds'
+                    )
+                ) p
+                LEFT JOIN tkr_usuarios u ON u.id = p.id
+            ) RETURNING CLOB
+        ) INTO p_out_json
+        FROM DUAL;
+    EXCEPTION
+        WHEN OTHERS THEN
+            p_out_json := '{"success":false,"error":"' || REPLACE(SQLERRM, '"', '\"') || '"}';
+    END p_obtener_profesionales_notificacion;
+
+    PROCEDURE p_obtener_entidades_giris (
+        p_out_json OUT CLOB
+    ) AS
+        v_raw_json CLOB;
+    BEGIN
+        v_raw_json := pkgca_tkr_entidades.f_entidades_directorio();
+        
+        SELECT JSON_OBJECT(
+            'success' VALUE 'true',
+            'entidades' VALUE (
+                SELECT JSON_ARRAYAGG(
+                    JSON_OBJECT(
+                        'id' VALUE ent.id,
+                        'label' VALUE ent.label,
+                        'url_logo' VALUE NVL(ent.url_logo, ''),
+                        'entidades_hijas' VALUE (
+                            SELECT JSON_ARRAYAGG(
+                                JSON_OBJECT(
+                                    'id' VALUE h.id,
+                                    'id_convenio' VALUE NVL(h.id_convenio, h.id),
+                                    'nombre_entidad' VALUE h.nombre_entidad
+                                ) RETURNING CLOB
+                            )
+                            FROM JSON_TABLE(
+                                ent.hijas_json, '$[*]'
+                                COLUMNS (
+                                    id             NUMBER        PATH '$.id',
+                                    id_convenio    NUMBER        PATH '$.id_convenio',
+                                    nombre_entidad VARCHAR2(200) PATH '$.nombre_entidad'
+                                )
+                            ) h
+                            JOIN tkr_convenios c ON (c.id = NVL(h.id_convenio, h.id))
+                           WHERE c.tipo_convenio IN ('GV', 'GO')
+                        )
+                    ) RETURNING CLOB
+                )
+                FROM JSON_TABLE(
+                    v_raw_json, '$[*]'
+                    COLUMNS (
+                        id         NUMBER         PATH '$.id',
+                        label      VARCHAR2(200)  PATH '$.label',
+                        url_logo   VARCHAR2(500)  PATH '$.url_logo',
+                        hijas_json VARCHAR2(4000) FORMAT JSON PATH '$.entidades_hijas'
+                    )
+                ) ent
+               WHERE EXISTS (
+                   SELECT 1
+                     FROM JSON_TABLE(
+                         ent.hijas_json, '$[*]'
+                         COLUMNS (
+                             id          NUMBER PATH '$.id',
+                             id_convenio NUMBER PATH '$.id_convenio'
+                         )
+                     ) h2
+                     JOIN tkr_convenios c2 ON (c2.id = NVL(h2.id_convenio, h2.id))
+                    WHERE c2.tipo_convenio IN ('GV', 'GO')
+               )
+            ) RETURNING CLOB
+        ) INTO p_out_json
+        FROM DUAL;
+    EXCEPTION
+        WHEN OTHERS THEN
+            p_out_json := '{"success":false,"error":"' || REPLACE(SQLERRM, '"', '\"') || '"}';
+    END p_obtener_entidades_giris;
+
+    PROCEDURE p_obtener_pacientes_notificacion (
+        p_in_json  IN  CLOB,
+        p_out_json OUT CLOB
+    ) AS
+        v_is_giris BOOLEAN;
+        v_id_cargue NUMBER;
+        v_id_entidad NUMBER;
+        v_id_convenio NUMBER;
+        v_id_especialidad NUMBER;
+        v_id_profesional NUMBER;
+        v_fecha_hasta VARCHAR2(20);
+    BEGIN
+        v_is_giris := CASE 
+            WHEN LOWER(NVL(JSON_VALUE(p_in_json, '$.is_giris'), 'false')) IN ('true', '1') THEN TRUE 
+            ELSE FALSE 
+        END;
+        v_id_cargue := TO_NUMBER(JSON_VALUE(p_in_json, '$.id_cargue'));
+        v_id_entidad := TO_NUMBER(JSON_VALUE(p_in_json, '$.id_entidad'));
+        v_id_convenio := TO_NUMBER(JSON_VALUE(p_in_json, '$.id_convenio'));
+        v_id_especialidad := TO_NUMBER(JSON_VALUE(p_in_json, '$.id_especialidad'));
+        v_id_profesional := TO_NUMBER(JSON_VALUE(p_in_json, '$.id_profesional'));
+        v_fecha_hasta := JSON_VALUE(p_in_json, '$.fecha_hasta');
+
+        IF v_is_giris THEN
+            SELECT JSON_OBJECT(
+                'success' VALUE 'true',
+                'data' VALUE (
+                    SELECT JSON_ARRAYAGG(
+                        JSON_OBJECT(
+                            'id_cita'          VALUE c.id,
+                            'codigo_cita'      VALUE NVL(c.id_hexadecimal, TO_CHAR(c.id)),
+                            'fecha_cita'       VALUE TO_CHAR(c.fecha_inicio_cita, 'YYYY-MM-DD'),
+                            'hora_cita'        VALUE TO_CHAR(c.fecha_inicio_cita, 'HH:MI AM'),
+                            'id_usuario'       VALUE c.id_usuario,
+                            'nombre_paciente'  VALUE (u.nombres || ' ' || u.apellidos),
+                            'identificacion'   VALUE u.identificacion,
+                            'id_estado_cita'   VALUE c.id_estado_cita,
+                            'estado_cita'      VALUE NVL(ec.estado_cita, 'Estado ' || c.id_estado_cita)
+                        ) RETURNING CLOB
+                    ) 
+                    FROM tkr_citas c
+                    JOIN tkr_usuarios u ON c.id_usuario = u.id
+                    LEFT JOIN tkr_estados_cita ec ON c.id_estado_cita = ec.id
+                    LEFT JOIN tkr_convenios conv ON c.id_convenio = conv.id
+                   WHERE c.id_estado_cita IN (10, 16)
+                     AND (v_id_entidad IS NULL OR conv.id_entidad_padre = v_id_entidad OR c.id_entidad = v_id_entidad)
+                     AND (v_id_convenio IS NULL OR c.id_convenio = v_id_convenio OR conv.id = v_id_convenio)
+                     AND (v_id_especialidad IS NULL OR c.id_especialidad = v_id_especialidad)
+                     AND (v_id_profesional IS NULL OR c.id_profesional = v_id_profesional)
+                     AND (v_fecha_hasta IS NULL OR TRUNC(c.fecha_inicio_cita) <= TO_DATE(v_fecha_hasta, 'YYYY-MM-DD'))
+                )
+            ) INTO p_out_json
+            FROM DUAL;
+        ELSE
+            SELECT JSON_OBJECT(
+                'success' VALUE 'true',
+                'data' VALUE (
+                    SELECT JSON_ARRAYAGG(
+                        JSON_OBJECT(
+                            'id_usuario'        VALUE u.id,
+                            'abreviatura'       VALUE ti.abreviatura,
+                            'identificacion'    VALUE u.identificacion,
+                            'nombre_paciente'   VALUE (u.nombres || ' ' || u.apellidos),
+                            'correo_electronico' VALUE u.correo_electronico,
+                            'telefono'          VALUE u.telefono
+                        ) RETURNING CLOB
+                    ) 
+                    FROM tkr_usuarios u
+                    JOIN tkr_tipos_identificacion ti ON u.id_tipo_identificacion = ti.id
+                   WHERE EXISTS (
+                       SELECT 1
+                         FROM tkr_temp_detalle_cargue dc
+                        WHERE u.id = dc.id_usuario
+                          AND (dc.id_temp_cargue = v_id_cargue OR v_id_cargue IS NULL)
+                   )
+                )
+            ) INTO p_out_json
+            FROM DUAL;
+        END IF;
+    EXCEPTION
+        WHEN OTHERS THEN
+            p_out_json := '{"success":false,"error":"' || REPLACE(SQLERRM, '"', '\"') || '"}';
+    END p_obtener_pacientes_notificacion;
+
+    PROCEDURE p_obtener_plantilla_notificacion (
+        p_in_json  IN  CLOB,
+        p_out_json OUT CLOB
+    ) AS
+        v_id_plantilla NUMBER;
+        v_texto CLOB;
+    BEGIN
+        v_id_plantilla := TO_NUMBER(JSON_VALUE(p_in_json, '$.id_plantilla'));
+        
+        SELECT pl.texto_plantilla
+          INTO v_texto
+          FROM tkr_plantillas pl
+         WHERE pl.id = v_id_plantilla;
+
+        SELECT JSON_OBJECT(
+            'success' VALUE 'true',
+            'id_plantilla' VALUE v_id_plantilla,
+            'texto_plantilla' VALUE v_texto,
+            'asunto' VALUE 'Notificación de Atención Médica'
+        ) INTO p_out_json
+        FROM DUAL;
+    EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            p_out_json := '{"success":false,"error":"La plantilla con ID ' || v_id_plantilla || ' no existe en la base de datos."}';
+        WHEN OTHERS THEN
+            p_out_json := '{"success":false,"error":"' || REPLACE(SQLERRM, '"', '\"') || '"}';
+    END p_obtener_plantilla_notificacion;
+
+    PROCEDURE p_envio_notificaciones (
+        p_in_json  IN  CLOB,
+        p_out_json OUT CLOB
+    ) AS
+        v_is_giris BOOLEAN;
+        v_id_plantilla NUMBER;
+        v_id_profesional NUMBER;
+        v_cant_pacientes NUMBER := 0;
+    BEGIN
+        v_is_giris := CASE 
+            WHEN LOWER(NVL(JSON_VALUE(p_in_json, '$.is_giris'), 'false')) IN ('true', '1') THEN TRUE 
+            ELSE FALSE 
+        END;
+        v_id_plantilla := TO_NUMBER(JSON_VALUE(p_in_json, '$.id_plantilla'));
+        v_id_profesional := TO_NUMBER(JSON_VALUE(p_in_json, '$.id_profesional'));
+
+        -- Contar la cantidad de usuarios/pacientes procesados en el JSON
+        SELECT COUNT(*)
+          INTO v_cant_pacientes
+          FROM JSON_TABLE(p_in_json, '$.pacientes[*]' COLUMNS (id_usuario NUMBER PATH '$.id_usuario'));
+
+        SELECT JSON_OBJECT(
+            'success' VALUE 'true',
+            'mensaje' VALUE 'Notificaciones registradas correctamente para ' || v_cant_pacientes || ' paciente(s).'
+        ) INTO p_out_json
+        FROM DUAL;
+    EXCEPTION
+        WHEN OTHERS THEN
+            p_out_json := '{"success":false,"error":"' || REPLACE(SQLERRM, '"', '\"') || '"}';
+    END p_envio_notificaciones;
 
 END pkgln_automatizaciones;
 /

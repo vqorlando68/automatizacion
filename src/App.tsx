@@ -11,8 +11,9 @@ import {
 import { DatabaseTableModal } from './components/DatabaseTableModal'
 import { UniqueValuesModal } from './components/UniqueValuesModal'
 import { Autoprogramaciones } from './components/Autoprogramaciones'
+import { Autonotificaciones } from './components/Autonotificaciones'
 
-type Tab = 'cargue' | 'crear_usuarios' | 'autoprogramaciones';
+type Tab = 'cargue' | 'crear_usuarios' | 'autoprogramaciones' | 'autonotificaciones';
 type WizardStep = '1' | '2_text' | '2_excel' | '3' | '4';
 type UserWizardStep = '1' | '2' | '3' | '4' | '5';
 
@@ -1232,18 +1233,29 @@ function App() {
                   Crear Usuarios
                 </button>
 
+                {/* Pestaña Autoprogramaciones (Deshabilitada por ahora) */}
+                <button
+                  disabled
+                  title="Opción deshabilitada por el momento"
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold text-slate-400 dark:text-slate-600 bg-slate-100/50 dark:bg-slate-800/30 cursor-not-allowed opacity-60"
+                >
+                  <span>🗓️</span>
+                  <span>Autoprogramaciones</span>
+                </button>
+
+                {/* Pestaña Autonotificaciones */}
                 <button
                   onClick={() => {
-                    setCurrentTab('autoprogramaciones');
+                    setCurrentTab('autonotificaciones');
                   }}
                   className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all duration-200 cursor-pointer ${
-                    currentTab === 'autoprogramaciones'
+                    currentTab === 'autonotificaciones'
                       ? 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-300 border-l-4 border-indigo-600'
                       : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-slate-200'
                   }`}
                 >
-                  <span>🗓️</span>
-                  Autoprogramaciones
+                  <span>🔔</span>
+                  Autonotificaciones
                 </button>
               </nav>
             </div>
@@ -1265,6 +1277,11 @@ function App() {
               {/* --- CONTENIDO: AUTOPROGRAMACIONES --- */}
               {currentTab === 'autoprogramaciones' && (
                 <Autoprogramaciones />
+              )}
+              
+              {/* --- CONTENIDO: AUTONOTIFICACIONES --- */}
+              {currentTab === 'autonotificaciones' && (
+                <Autonotificaciones />
               )}
               
 
