@@ -13,6 +13,7 @@ import { UniqueValuesModal } from './components/UniqueValuesModal'
 import { Autoprogramaciones } from './components/Autoprogramaciones'
 import { Autonotificaciones } from './components/Autonotificaciones'
 import { EquipoMedico } from './components/EquipoMedico'
+import { DocumentationModal } from './components/DocumentationModal'
 
 type Tab = 'cargue' | 'crear_usuarios' | 'autoprogramaciones' | 'autonotificaciones' | 'equipo_medico';
 type WizardStep = '1' | '2_text' | '2_excel' | '3' | '4';
@@ -3264,6 +3265,9 @@ function App() {
           </div>
         </div>
       )}
+
+      {/* Modal Oculto de Documentación Técnica (Atajo: Ctrl + Alt + D) */}
+      <DocumentationModal currentTab={currentTab} />
     </div>
   );
 }

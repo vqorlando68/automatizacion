@@ -567,28 +567,28 @@ CREATE OR REPLACE PACKAGE BODY pkgln_automatizaciones AS
 
             IF UPPER(p_criterio) = 'ID' THEN
                 BEGIN
-                    v_sql := 'SELECT id FROM TEKER_DEV.' || p_tabla || ' WHERE id = :1 AND ROWNUM = 1';
+                    v_sql := 'SELECT id FROM ' || p_tabla || ' WHERE id = :1 AND ROWNUM = 1';
                     EXECUTE IMMEDIATE v_sql INTO v_id USING TO_NUMBER(p_val);
                 EXCEPTION
                     WHEN OTHERS THEN v_id := NULL;
                 END;
             ELSIF UPPER(p_criterio) = 'NOMBRE' OR UPPER(p_criterio) = 'DESCRIPCION' THEN
                 BEGIN
-                    v_sql := 'SELECT id FROM TEKER_DEV.' || p_tabla || ' WHERE UPPER(TRIM(' || v_col_nombre || ')) = UPPER(TRIM(:1)) AND ROWNUM = 1';
+                    v_sql := 'SELECT id FROM ' || p_tabla || ' WHERE UPPER(TRIM(' || v_col_nombre || ')) = UPPER(TRIM(:1)) AND ROWNUM = 1';
                     EXECUTE IMMEDIATE v_sql INTO v_id USING p_val;
                 EXCEPTION
                     WHEN OTHERS THEN
                         -- Fallbacks especiales
                         IF UPPER(p_tabla) = 'TKR_CIUDADES' THEN
                             BEGIN
-                                v_sql := 'SELECT id FROM TEKER_DEV.TKR_CIUDADES WHERE UPPER(TRIM(nombre_ciudad)) = UPPER(TRIM(:1)) AND ROWNUM = 1';
+                                v_sql := 'SELECT id FROM TKR_CIUDADES WHERE UPPER(TRIM(nombre_ciudad)) = UPPER(TRIM(:1)) AND ROWNUM = 1';
                                 EXECUTE IMMEDIATE v_sql INTO v_id USING p_val;
                             EXCEPTION
                                 WHEN OTHERS THEN v_id := NULL;
                             END;
                         ELSIF UPPER(p_tabla) = 'TKR_TIPOS_IDENTIFICACION' THEN
                             BEGIN
-                                v_sql := 'SELECT id FROM TEKER_DEV.TKR_TIPOS_IDENTIFICACION WHERE UPPER(TRIM(abreviatura)) = UPPER(TRIM(:1)) AND ROWNUM = 1';
+                                v_sql := 'SELECT id FROM TKR_TIPOS_IDENTIFICACION WHERE UPPER(TRIM(abreviatura)) = UPPER(TRIM(:1)) AND ROWNUM = 1';
                                 EXECUTE IMMEDIATE v_sql INTO v_id USING p_val;
                             EXCEPTION
                                 WHEN OTHERS THEN v_id := NULL;
@@ -839,7 +839,7 @@ CREATE OR REPLACE PACKAGE BODY pkgln_automatizaciones AS
                     v_cols := SUBSTR(v_cols, 1, LENGTH(v_cols) - 2);
                     v_vals := SUBSTR(v_vals, 1, LENGTH(v_vals) - 2);
 
-                    v_sql := 'INSERT INTO TEKER_DEV.TKR_USUARIOS (' || v_cols || ') VALUES (' || v_vals || ') RETURNING id INTO :1';
+                    v_sql := 'INSERT INTO TKR_USUARIOS (' || v_cols || ') VALUES (' || v_vals || ') RETURNING id INTO :1';
                     BEGIN
                         EXECUTE IMMEDIATE v_sql USING OUT v_generated_id;
                         
@@ -1050,7 +1050,7 @@ CREATE OR REPLACE PACKAGE BODY pkgln_automatizaciones AS
                                id_ciudad_tq AS id_tq,
                                latitud AS lat,
                                longitud AS lon
-                        FROM TEKER_DEV.tkr_ciudades
+                        FROM tkr_ciudades
                         WHERE ROWNUM <= 500
                         ORDER BY id
                     )
@@ -1079,7 +1079,7 @@ CREATE OR REPLACE PACKAGE BODY pkgln_automatizaciones AS
                                nombre_barrio AS name_b,
                                numero_comuna AS num_com,
                                nombre_comuna AS name_com
-                        FROM TEKER_DEV.tkr_barrios
+                        FROM tkr_barrios
                         WHERE ROWNUM <= 500
                         ORDER BY id
                     )
@@ -1104,7 +1104,7 @@ CREATE OR REPLACE PACKAGE BODY pkgln_automatizaciones AS
                         SELECT id,
                                descripcion_perfil AS desc_p,
                                duracion_cita AS dur
-                        FROM TEKER_DEV.tkr_perfiles_doctor
+                        FROM tkr_perfiles_doctor
                         WHERE ROWNUM <= 500
                         ORDER BY id
                     )
@@ -1129,7 +1129,7 @@ CREATE OR REPLACE PACKAGE BODY pkgln_automatizaciones AS
                         SELECT id,
                                descripcion AS desc_m,
                                orden AS ord
-                        FROM TEKER_DEV.tkr_medios
+                        FROM tkr_medios
                         WHERE ROWNUM <= 500
                         ORDER BY id
                     )
@@ -1153,7 +1153,7 @@ CREATE OR REPLACE PACKAGE BODY pkgln_automatizaciones AS
                         SELECT id,
                                nombre_ok AS name_a
                         FROM (
-                            SELECT id, nombre_asegurador AS nombre_ok FROM TEKER_DEV.tkr_planes_aseguradores
+                            SELECT id, nombre_asegurador AS nombre_ok FROM tkr_planes_aseguradores
                         )
                         WHERE ROWNUM <= 500
                         ORDER BY id
@@ -1177,7 +1177,7 @@ CREATE OR REPLACE PACKAGE BODY pkgln_automatizaciones AS
                     FROM (
                         SELECT id,
                                descripcion AS desc_r
-                        FROM TEKER_DEV.tkr_regimen_aseguramiento
+                        FROM tkr_regimen_aseguramiento
                         WHERE ROWNUM <= 500
                         ORDER BY id
                     )
@@ -1208,7 +1208,7 @@ CREATE OR REPLACE PACKAGE BODY pkgln_automatizaciones AS
                                abreviatura_wompi AS ab_w,
                                abreviatura_taxxa AS ab_x,
                                id_tipodoc_tq AS doc_tq
-                        FROM TEKER_DEV.tkr_tipos_identificacion
+                        FROM tkr_tipos_identificacion
                         WHERE ROWNUM <= 500
                         ORDER BY id
                     )
@@ -1231,7 +1231,7 @@ CREATE OR REPLACE PACKAGE BODY pkgln_automatizaciones AS
                     FROM (
                         SELECT id,
                                genero AS gen
-                        FROM TEKER_DEV.tkr_generos
+                        FROM tkr_generos
                         WHERE ROWNUM <= 500
                         ORDER BY id
                     )
