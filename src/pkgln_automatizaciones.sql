@@ -75,6 +75,16 @@ CREATE OR REPLACE PACKAGE pkgln_automatizaciones AS
         p_in_json  IN  CLOB,
         p_out_json OUT CLOB
     );
+
+    PROCEDURE p_obtener_pacientes_giris_equipo (
+        p_in_json  IN  CLOB,
+        p_out_json OUT CLOB
+    );
+
+    PROCEDURE p_guardar_equipo_medico (
+        p_in_json  IN  CLOB,
+        p_out_json OUT CLOB
+    );
 END pkgln_automatizaciones;
 /
 
@@ -1866,5 +1876,150 @@ CREATE OR REPLACE PACKAGE BODY pkgln_automatizaciones AS
             p_out_json := '{"success":false,"error":"' || REPLACE(SQLERRM, '"', '\"') || '"}';
     END p_envio_notificaciones;
 
+    PROCEDURE p_obtener_pacientes_giris_equipo (
+        p_in_json  IN  CLOB,
+        p_out_json OUT CLOB
+    ) AS
+        v_busqueda VARCHAR2(200);
+        v_json_pacientes CLOB;
+    BEGIN
+        v_busqueda := LOWER(TRIM(JSON_VALUE(p_in_json, '$.busqueda')));
+
+        SELECT JSON_ARRAYAGG(
+            JSON_OBJECT(
+                'id_usuario' VALUE u.id,
+                'nombres' VALUE u.nombres,
+                'apellidos' VALUE u.apellidos,
+                'nombre_completo' VALUE TRIM(u.nombres || ' ' || u.apellidos),
+                'identificacion' VALUE u.identificacion,
+                'correo_electronico' VALUE u.correo_electronico,
+                'telefono' VALUE u.telefono,
+                'direccion' VALUE u.direccion,
+                'id_entidad' VALUE u.id_prestador_salud,
+                'nombre_convenio' VALUE (
+                    SELECT e.nombre_entidad
+                    FROM tkr_usuarios_cohorte uc_conv
+                    JOIN tkr_convenios c ON c.id = uc_conv.id_convenio
+                    JOIN tkr_entidades e ON e.id = c.id_entidad_hijo
+                    WHERE uc_conv.id_usuario = u.id
+                      AND ROWNUM = 1
+                ),
+                'nombre_ciudad' VALUE ciu.nombre_ciudad,
+                'nombre_coordinador' VALUE TRIM(coord.nombres || ' ' || coord.apellidos),
+                'profesionales_asignados' VALUE (
+                    SELECT NVL(
+                        JSON_ARRAYAGG(
+                            JSON_OBJECT(
+                                'id_profesional' VALUE eq.id_profesional,
+                                'nombre_profesional' VALUE TRIM(p.nombres || ' ' || p.apellidos),
+                                'correo_profesional' VALUE p.correo_electronico
+                            )
+                        ),
+                        '[]'
+                    )
+                    FROM tkr_equipo_medico eq
+                    JOIN tkr_usuarios p ON p.id = eq.id_profesional
+                    WHERE eq.id_usuario = u.id
+                ) FORMAT JSON
+            ) RETURNING CLOB
+        ) INTO v_json_pacientes
+        FROM tkr_usuarios u
+        LEFT JOIN tkr_ciudades ciu ON u.id_ciudad_residencia = ciu.id
+        LEFT JOIN tkr_usuarios_cohorte uc ON uc.id_usuario = u.id
+        LEFT JOIN tkr_usuarios coord ON uc.id_coordinador = coord.id
+        WHERE UPPER(NVL(TRIM(u.paciente_giris), 'N')) IN ('S', 'SI', '1', 'TRUE')
+          AND (
+              v_busqueda IS NULL OR
+              LOWER(u.nombres || ' ' || u.apellidos) LIKE '%' || v_busqueda || '%' OR
+              LOWER(u.identificacion) LIKE '%' || v_busqueda || '%'
+          );
+
+        IF v_json_pacientes IS NULL THEN
+            v_json_pacientes := '[]';
+        END IF;
+
+        SELECT JSON_OBJECT(
+            'success' VALUE 'true',
+            'pacientes' VALUE v_json_pacientes
+        ) INTO p_out_json
+        FROM DUAL;
+    EXCEPTION
+        WHEN OTHERS THEN
+            p_out_json := '{"success":false,"error":"' || REPLACE(SQLERRM, '"', '\"') || '"}';
+    END p_obtener_pacientes_giris_equipo;
+
+    PROCEDURE p_guardar_equipo_medico (
+        p_in_json  IN  CLOB,
+        p_out_json OUT CLOB
+    ) AS
+        v_id_usuario_creacion NUMBER;
+        v_cant_pacientes      NUMBER := 0;
+    BEGIN
+        v_id_usuario_creacion := TO_NUMBER(JSON_VALUE(p_in_json, '$.id_usuario_creacion'));
+
+        FOR usr IN (
+            SELECT id_usuario
+            FROM (
+                SELECT TO_NUMBER(JSON_VALUE(p_in_json, '$.id_usuario')) AS id_usuario FROM DUAL
+                UNION ALL
+                SELECT id_usuario
+                FROM JSON_TABLE(p_in_json, '$.pacientes[*]' COLUMNS (id_usuario NUMBER PATH '$'))
+            )
+            WHERE id_usuario IS NOT NULL
+        ) LOOP
+            v_cant_pacientes := v_cant_pacientes + 1;
+
+            -- 1. Eliminar asignaciones anteriores
+            DELETE FROM tkr_equipo_medico
+             WHERE id_usuario = usr.id_usuario;
+
+            -- 2. Insertar las nuevas asignaciones
+            FOR prof IN (
+                SELECT id_profesional
+                FROM JSON_TABLE(p_in_json, '$.profesionales[*]' COLUMNS (id_profesional NUMBER PATH '$'))
+            ) LOOP
+                BEGIN
+                    INSERT INTO tkr_equipo_medico (
+                        id_usuario,
+                        id_profesional,
+                        fecha_creacion,
+                        id_usuario_creacion
+                    ) VALUES (
+                        usr.id_usuario,
+                        prof.id_profesional,
+                        SYSDATE,
+                        v_id_usuario_creacion
+                    );
+                EXCEPTION
+                    WHEN OTHERS THEN
+                        INSERT INTO tkr_equipo_medico (
+                            id,
+                            id_usuario,
+                            id_profesional,
+                            fecha_creacion,
+                            id_usuario_creacion
+                        ) VALUES (
+                            (SELECT NVL(MAX(id), 0) + 1 FROM tkr_equipo_medico),
+                            usr.id_usuario,
+                            prof.id_profesional,
+                            SYSDATE,
+                            v_id_usuario_creacion
+                        );
+                END;
+            END LOOP;
+        END LOOP;
+
+        COMMIT;
+
+        SELECT JSON_OBJECT(
+            'success' VALUE 'true',
+            'mensaje' VALUE 'Equipo médico asignado correctamente para ' || v_cant_pacientes || ' paciente(s).'
+        ) INTO p_out_json
+        FROM DUAL;
+    EXCEPTION
+        WHEN OTHERS THEN
+            ROLLBACK;
+            p_out_json := '{"success":false,"error":"' || REPLACE(SQLERRM, '"', '\"') || '"}';
+    END p_guardar_equipo_medico;
+
 END pkgln_automatizaciones;
-/

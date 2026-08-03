@@ -12,8 +12,9 @@ import { DatabaseTableModal } from './components/DatabaseTableModal'
 import { UniqueValuesModal } from './components/UniqueValuesModal'
 import { Autoprogramaciones } from './components/Autoprogramaciones'
 import { Autonotificaciones } from './components/Autonotificaciones'
+import { EquipoMedico } from './components/EquipoMedico'
 
-type Tab = 'cargue' | 'crear_usuarios' | 'autoprogramaciones' | 'autonotificaciones';
+type Tab = 'cargue' | 'crear_usuarios' | 'autoprogramaciones' | 'autonotificaciones' | 'equipo_medico';
 type WizardStep = '1' | '2_text' | '2_excel' | '3' | '4';
 type UserWizardStep = '1' | '2' | '3' | '4' | '5';
 
@@ -1257,6 +1258,21 @@ function App() {
                   <span>🔔</span>
                   Autonotificaciones
                 </button>
+
+                {/* Pestaña Equipo Médico */}
+                <button
+                  onClick={() => {
+                    setCurrentTab('equipo_medico');
+                  }}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all duration-200 cursor-pointer ${
+                    currentTab === 'equipo_medico'
+                      ? 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-300 border-l-4 border-indigo-600'
+                      : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-slate-200'
+                  }`}
+                >
+                  <span>👨‍⚕️</span>
+                  Equipo Médico
+                </button>
               </nav>
             </div>
 
@@ -1282,6 +1298,11 @@ function App() {
               {/* --- CONTENIDO: AUTONOTIFICACIONES --- */}
               {currentTab === 'autonotificaciones' && (
                 <Autonotificaciones />
+              )}
+              
+              {/* --- CONTENIDO: EQUIPO MÉRICO --- */}
+              {currentTab === 'equipo_medico' && (
+                <EquipoMedico />
               )}
               
 
