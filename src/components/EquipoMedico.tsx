@@ -80,7 +80,7 @@ export function EquipoMedico() {
         if (data.pacientes.length > 0 && !selectedPatient) {
           const first = data.pacientes[0];
           setSelectedPatient(first);
-          setSelectedProfIds(first.profesionales_asignados?.map(p => p.id_profesional) || []);
+          setSelectedProfIds(first.profesionales_asignados?.map((p: any) => p.id_profesional) || []);
         }
       } else {
         showNotification('error', data.error || 'Error al cargar pacientes GIRIS.');
