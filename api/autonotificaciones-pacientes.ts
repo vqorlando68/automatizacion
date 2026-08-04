@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import oracledb from 'oracledb';
-import { executeQuery } from './db';
+import { executeQuery } from './db.js';
 
 const MOCK_PACIENTES = [
   { id_usuario: 5001, abreviatura: 'CC', identificacion: '100100200', nombre_paciente: 'Juan Pérez', correo_electronico: 'juan.perez@gmail.com', telefono: '3001234567' },

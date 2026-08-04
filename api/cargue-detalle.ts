@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import oracledb from 'oracledb';
-import { executeQuery } from './db';
+import { executeQuery } from './db.js';
 
 function getMockRows() {
   return [

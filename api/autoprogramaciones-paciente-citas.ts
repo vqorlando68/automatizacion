@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import oracledb from 'oracledb';
-import { executeQuery } from './db';
+import { executeQuery } from './db.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const idUsuarioRaw = req.method === 'POST' ? req.body.id_usuario : req.query.id_usuario;
