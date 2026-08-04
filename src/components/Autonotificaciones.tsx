@@ -59,15 +59,36 @@ interface CitaGiris {
   estado_cita: string;
 }
 
+interface DetalleEnvio {
+  id_usuario: number;
+  identificacion?: string;
+  nombre_paciente: string;
+  correo_electronico?: string;
+  telefono?: string;
+  nombre_especialidad?: string;
+  nombre_coordinador?: string;
+  enviado: boolean;
+  motivo: string;
+}
+
 export function Autonotificaciones() {
   const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
 
-  // Pasos: 1: Config, 2: Selección, 3: Previsualización
-  const [step, setStep] = useState<1 | 2 | 3>(1);
+  // Pasos: 1: Config, 2: Selección, 3: Previsualización, 4: Log de Resultados
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
 
   // Form Step 1
   const [fechaHasta, setFechaHasta] = useState<string>(todayStr);
   const [isGiris, setIsGiris] = useState<boolean>(false);
+
+  // Detalle de resultados del envío
+  const [detallesEnvio, setDetallesEnvio] = useState<DetalleEnvio[]>([]);
+  const [cantEnviados, setCantEnviados] = useState<number>(0);
+  const [cantOmitidos, setCantOmitidos] = useState<number>(0);
+
+  // Filtros para el Log de Resultados (Paso 4)
+  const [logSearchText, setLogSearchText] = useState<string>('');
+  const [logTabFilter, setLogTabFilter] = useState<'TODOS' | 'ENVIADOS' | 'SIN_COORDINADORA' | 'OMITIDOS'>('TODOS');
   
   // Catalogs
   const [profesionales, setProfesionales] = useState<Profesional[]>([]);
@@ -218,9 +239,10 @@ export function Autonotificaciones() {
     return list;
   }, [filteredProfesionales, profSortField, profSortOrder]);
 
-  // Reset Step 1 error when parameters change
+  // Reset Step 1 error and send status when parameters change
   useEffect(() => {
     setStep1Error('');
+    setEnvioExitoso(false);
   }, [fechaHasta, isGiris, selectedCargueId, selectedEntidadId, selectedConvenioId, selectedProf]);
 
   // Active Entidades List depending on isGiris
@@ -256,8 +278,6 @@ export function Autonotificaciones() {
       id_convenio: selectedConvenioId,
       id_especialidad: selectedEspecialidadId || null
     };
-    setLastDebugPayload(payload);
-
     try {
       const res = await fetch('/api/autonotificaciones-pacientes', {
         method: 'POST',
@@ -265,9 +285,10 @@ export function Autonotificaciones() {
         body: JSON.stringify(payload)
       });
       const data = await res.json();
-      setLastDebugResponse(data);
       if (!res.ok || data.error || data.success === false) {
         setStep1Error(data.error || 'Error al consultar la base de datos. Verifique los filtros seleccionados.');
+        setValidatingStep1(false);
+        setLoadingTableData(false);
         return;
       }
 
@@ -289,6 +310,7 @@ export function Autonotificaciones() {
 
       if (records.length === 0) {
         setStep1Error('No se encontró información de citas o pacientes en la base de datos para los parámetros seleccionados.');
+        setValidatingStep1(false);
         setLoadingTableData(false);
         return; // Permanece en el Paso 1
       }
@@ -493,7 +515,32 @@ export function Autonotificaciones() {
       const data = await res.json();
       if (data.success) {
         setEnvioExitoso(true);
-        setMensajeResultado(data.mensaje || 'Las notificaciones fueron enviadas correctamente.');
+        setMensajeResultado(data.mensaje || 'Las notificaciones fueron procesadas correctamente.');
+        
+        let rawDetalles = data.detalles;
+        if (rawDetalles && typeof rawDetalles === 'object' && !Array.isArray(rawDetalles) && rawDetalles.detalles) {
+          rawDetalles = rawDetalles.detalles;
+        }
+
+        let parsedDetalles: DetalleEnvio[] = [];
+        if (Array.isArray(rawDetalles)) {
+          parsedDetalles = rawDetalles;
+        } else if (typeof rawDetalles === 'string') {
+          try {
+            parsedDetalles = JSON.parse(rawDetalles);
+          } catch (e) {
+            console.error('Error al parsear detalles:', e);
+          }
+        }
+        setDetallesEnvio(parsedDetalles);
+
+        const enviadosCount = parsedDetalles.filter(d => d.enviado === true || String(d.enviado).toLowerCase() === 'true').length;
+        const omitidosCount = parsedDetalles.length - enviadosCount;
+        setCantEnviados(data.cant_enviados ?? enviadosCount);
+        setCantOmitidos(data.cant_omitidos ?? omitidosCount);
+
+        // Avanzar automáticamente al Paso 4: Log de Resultados
+        setStep(4);
       } else {
         setEnvioExitoso(false);
         setMensajeResultado(data.error || 'Error al procesar el envío de notificaciones.');
@@ -505,6 +552,50 @@ export function Autonotificaciones() {
     } finally {
       setEnviando(false);
     }
+  };
+
+  // Exportar Log de Resultados a Excel (CSV con UTF-8 BOM)
+  const exportLogToExcel = () => {
+    if (!detallesEnvio || detallesEnvio.length === 0) return;
+
+    const headers = [
+      'ID Usuario',
+      'Identificación',
+      'Nombre Paciente',
+      'Correo Electrónico',
+      'Teléfono',
+      'Especialidad',
+      'Coordinadora',
+      'Estado Envío',
+      'Motivo'
+    ];
+
+    const rows = detallesEnvio.map(item => {
+      const isEnviado = item.enviado === true || String(item.enviado).toLowerCase() === 'true';
+      return [
+        item.id_usuario,
+        `"${(item.identificacion || '').replace(/"/g, '""')}"`,
+        `"${(item.nombre_paciente || '').replace(/"/g, '""')}"`,
+        `"${(item.correo_electronico || '').replace(/"/g, '""')}"`,
+        `"${(item.telefono || '').replace(/"/g, '""')}"`,
+        `"${(item.nombre_especialidad || '').replace(/"/g, '""')}"`,
+        `"${(item.nombre_coordinador || 'Sin Coordinadora').replace(/"/g, '""')}"`,
+        isEnviado ? 'Enviado' : 'No Enviado',
+        `"${(item.motivo || '').replace(/"/g, '""')}"`
+      ];
+    });
+
+    const csvContent = '\uFEFF' + [headers.join(';'), ...rows.map(r => r.join(';'))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    const fileName = `log_autonotificaciones_${fechaHasta || new Date().toISOString().split('T')[0]}.csv`;
+    link.setAttribute('download', fileName);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   // Step 1 Validation
@@ -538,29 +629,35 @@ export function Autonotificaciones() {
             </p>
           </div>
           <div className="hidden sm:flex items-center gap-2 bg-white/10 px-4 py-2 rounded-xl backdrop-blur-md text-xs font-semibold">
-            <span>Paso {step} de 3</span>
+            <span>Paso {step} de 4</span>
           </div>
         </div>
 
-        {/* Asistente Stepper */}
-        <div className="grid grid-cols-3 gap-4 mt-6">
-          <div className={`p-3 rounded-xl flex items-center gap-3 transition-all ${
-            step === 1 ? 'bg-white text-indigo-900 shadow font-bold' : 'bg-white/10 text-white opacity-80'
+        {/* Asistente Stepper (4 Pasos) */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6">
+          <div className={`p-3 rounded-xl flex items-center gap-2.5 transition-all ${
+            step === 1 ? 'bg-white text-indigo-900 shadow-md font-bold' : 'bg-white/10 text-white opacity-80'
           }`}>
-            <span className="w-7 h-7 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs font-bold">1</span>
-            <span className="text-xs sm:text-sm truncate">1. Configuración</span>
+            <span className="w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs font-bold shrink-0">1</span>
+            <span className="text-xs font-medium truncate">1. Configuración</span>
           </div>
-          <div className={`p-3 rounded-xl flex items-center gap-3 transition-all ${
-            step === 2 ? 'bg-white text-indigo-900 shadow font-bold' : 'bg-white/10 text-white opacity-80'
+          <div className={`p-3 rounded-xl flex items-center gap-2.5 transition-all ${
+            step === 2 ? 'bg-white text-indigo-900 shadow-md font-bold' : 'bg-white/10 text-white opacity-80'
           }`}>
-            <span className="w-7 h-7 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs font-bold">2</span>
-            <span className="text-xs sm:text-sm truncate">2. Pacientes / Citas</span>
+            <span className="w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs font-bold shrink-0">2</span>
+            <span className="text-xs font-medium truncate">2. Pacientes / Citas</span>
           </div>
-          <div className={`p-3 rounded-xl flex items-center gap-3 transition-all ${
-            step === 3 ? 'bg-white text-indigo-900 shadow font-bold' : 'bg-white/10 text-white opacity-80'
+          <div className={`p-3 rounded-xl flex items-center gap-2.5 transition-all ${
+            step === 3 ? 'bg-white text-indigo-900 shadow-md font-bold' : 'bg-white/10 text-white opacity-80'
           }`}>
-            <span className="w-7 h-7 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs font-bold">3</span>
-            <span className="text-xs sm:text-sm truncate">3. Plantilla y Envío</span>
+            <span className="w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs font-bold shrink-0">3</span>
+            <span className="text-xs font-medium truncate">3. Vista Previa</span>
+          </div>
+          <div className={`p-3 rounded-xl flex items-center gap-2.5 transition-all ${
+            step === 4 ? 'bg-white text-indigo-900 shadow-md font-bold' : 'bg-white/10 text-white opacity-80'
+          }`}>
+            <span className="w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs font-bold shrink-0">4</span>
+            <span className="text-xs font-medium truncate">4. Resultados</span>
           </div>
         </div>
       </div>
@@ -1158,32 +1255,380 @@ export function Autonotificaciones() {
             </div>
           )}
 
-          {/* Botones de Acción */}
+          {/* Listado y Reporte de Pacientes Procesados */}
+          {detallesEnvio.length > 0 && (
+            <div className="bg-slate-50 dark:bg-slate-900/60 rounded-2xl p-5 border border-slate-200 dark:border-slate-700 space-y-4">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-700 pb-3">
+                <div>
+                  <h3 className="text-base font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                    <span>📋</span> Reporte de Envío por Paciente
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Detalle del resultado de envío de cada destinatario.
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 text-xs font-semibold">
+                  <span className="px-3 py-1.5 rounded-lg bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                    ✅ Enviados: <strong>{cantEnviados}</strong>
+                  </span>
+                  <span className="px-3 py-1.5 rounded-lg bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                    ⚠️ Omitidos / Sin Coordinadora: <strong>{cantOmitidos}</strong>
+                  </span>
+                  <button
+                    onClick={exportLogToExcel}
+                    className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-sm transition-all flex items-center gap-1.5 cursor-pointer ml-auto sm:ml-2"
+                  >
+                    <span>📥</span>
+                    <span>Exportar Log a Excel</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Tabla Resumen */}
+              <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
+                <table className="w-full text-left text-xs text-slate-700 dark:text-slate-300">
+                  <thead className="bg-slate-100 dark:bg-slate-900/80 uppercase font-bold text-slate-600 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700">
+                    <tr>
+                      <th className="p-3">Estado</th>
+                      <th className="p-3">Paciente</th>
+                      <th className="p-3">Especialidad</th>
+                      <th className="p-3">Coordinadora</th>
+                      <th className="p-3">Motivo / Detalle</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
+                    {detallesEnvio.map((det, idx) => {
+                      const isEnviado = det.enviado === true || String(det.enviado).toLowerCase() === 'true';
+                      return (
+                        <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-700/40 transition-colors">
+                          <td className="p-3">
+                            {isEnviado ? (
+                              <span className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 text-[11px] font-bold inline-flex items-center gap-1">
+                                <span>✅</span> Enviado
+                              </span>
+                            ) : (
+                              <span className="px-2.5 py-1 rounded-full bg-red-100 text-red-800 dark:bg-red-950/80 dark:text-red-300 text-[11px] font-bold inline-flex items-center gap-1">
+                                <span>❌</span> No Enviado
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-3 font-semibold text-slate-800 dark:text-slate-200">
+                            {det.nombre_paciente}
+                            <span className="block text-[11px] text-slate-400 font-normal">ID Usuario: {det.id_usuario}</span>
+                          </td>
+                          <td className="p-3">{det.nombre_especialidad || 'Sin especialidad'}</td>
+                          <td className="p-3">
+                            {det.nombre_coordinador ? (
+                              <span className="text-slate-700 dark:text-slate-300 font-medium">{det.nombre_coordinador}</span>
+                            ) : (
+                              <span className="text-red-600 dark:text-red-400 font-semibold italic text-[11px] bg-red-50 dark:bg-red-950/60 px-2 py-0.5 rounded border border-red-200 dark:border-red-900">
+                                ⚠️ Sin Coordinadora
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-3">
+                            <span className={`text-xs ${isEnviado ? 'text-emerald-700 dark:text-emerald-400' : 'text-amber-700 dark:text-amber-400 font-medium'}`}>
+                              {det.motivo}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Botones de Acción Paso 3 */}
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-slate-100 dark:border-slate-700">
             <button
               disabled={enviando}
               onClick={() => setStep(2)}
-              className="px-5 py-2 rounded-xl border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer"
+              className="px-5 py-2 rounded-xl border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
             >
               ⬅ Modificar Selección
             </button>
 
+            {envioExitoso ? (
+              <button
+                onClick={() => setStep(4)}
+                className="w-full sm:w-auto px-8 py-3 rounded-xl font-bold text-sm shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer bg-gradient-to-r from-indigo-600 to-purple-600 text-white hover:from-indigo-700 hover:to-purple-700"
+              >
+                <span>📋</span>
+                <span>Ver Log de Resultados (Paso 4) ➔</span>
+              </button>
+            ) : (
+              <button
+                disabled={enviando || loadingPlantilla || !plantillaHtml || !!plantillaError}
+                onClick={handleEnviarNotificaciones}
+                className="w-full sm:w-auto px-8 py-3 rounded-xl font-bold text-sm shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white"
+              >
+                {enviando ? (
+                  <>
+                    <span className="animate-spin">⏳</span>
+                    <span>Enviando y Procesando...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>🚀</span>
+                    <span>Enviar Notificaciones y Ver Log ➔</span>
+                  </>
+                )}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ================= PASO 4: LOG DE RESULTADOS ================= */}
+      {step === 4 && (
+        <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm space-y-6 animate-fade-in">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-700 pb-4">
+            <div>
+              <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                <span>📋</span> Log de Resultados de Envío de Notificaciones
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                Detalle y estado de entrega de notificaciones para los pacientes procesados.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={exportLogToExcel}
+                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md transition-all flex items-center gap-2 cursor-pointer"
+              >
+                <span>📥</span>
+                <span>Exportar Log a Excel</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  setStep(1);
+                  setEnvioExitoso(false);
+                  setMensajeResultado('');
+                  setDetallesEnvio([]);
+                  setSelectedPatientIds([]);
+                  setSelectedCitaIds([]);
+                }}
+                className="px-4 py-2 rounded-xl border border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-semibold text-xs transition-all flex items-center gap-2 cursor-pointer"
+              >
+                <span>🔄</span>
+                <span>Nueva Notificación</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Banner de Resultado */}
+          {mensajeResultado && (
+            <div className={`p-4 rounded-xl border text-sm flex items-center justify-between gap-3 ${
+              envioExitoso 
+                ? 'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-300 text-emerald-800 dark:text-emerald-200' 
+                : 'bg-red-50 dark:bg-red-950/50 border-red-300 text-red-800 dark:text-red-200'
+            }`}>
+              <div className="flex items-center gap-3">
+                <span className="text-xl">{envioExitoso ? '✅' : '⚠️'}</span>
+                <span className="font-medium">{mensajeResultado}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Tarjetas Estadísticas */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="bg-slate-50 dark:bg-slate-900/60 p-4 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-between">
+              <div>
+                <span className="text-xs text-slate-500 dark:text-slate-400 block font-semibold">Total Procesados</span>
+                <span className="text-2xl font-black text-slate-800 dark:text-slate-100">{detallesEnvio.length}</span>
+              </div>
+              <span className="text-3xl">👥</span>
+            </div>
+
+            <div className="bg-emerald-50 dark:bg-emerald-950/40 p-4 rounded-xl border border-emerald-200 dark:border-emerald-800/60 flex items-center justify-between">
+              <div>
+                <span className="text-xs text-emerald-700 dark:text-emerald-300 block font-semibold">Notificaciones Enviadas</span>
+                <span className="text-2xl font-black text-emerald-800 dark:text-emerald-200">{cantEnviados}</span>
+              </div>
+              <span className="text-3xl">✅</span>
+            </div>
+
+            <div className="bg-amber-50 dark:bg-amber-950/40 p-4 rounded-xl border border-amber-200 dark:border-amber-800/60 flex items-center justify-between">
+              <div>
+                <span className="text-xs text-amber-700 dark:text-amber-300 block font-semibold">Omitidas / Sin Coordinadora</span>
+                <span className="text-2xl font-black text-amber-800 dark:text-amber-200">{cantOmitidos}</span>
+              </div>
+              <span className="text-3xl">⚠️</span>
+            </div>
+          </div>
+
+          {/* Barra de Filtros y Búsqueda */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-slate-100 dark:bg-slate-900/80 p-3 rounded-xl">
+            {/* Tabs */}
+            <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto">
+              <button
+                onClick={() => setLogTabFilter('TODOS')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  logTabFilter === 'TODOS'
+                    ? 'bg-indigo-600 text-white shadow'
+                    : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+                }`}
+              >
+                Todos ({detallesEnvio.length})
+              </button>
+              <button
+                onClick={() => setLogTabFilter('ENVIADOS')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  logTabFilter === 'ENVIADOS'
+                    ? 'bg-emerald-600 text-white shadow'
+                    : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+                }`}
+              >
+                ✅ Enviados ({cantEnviados})
+              </button>
+              <button
+                onClick={() => setLogTabFilter('SIN_COORDINADORA')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  logTabFilter === 'SIN_COORDINADORA'
+                    ? 'bg-red-600 text-white shadow'
+                    : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+                }`}
+              >
+                ⚠️ Sin Coordinadora ({detallesEnvio.filter(d => !d.nombre_coordinador || d.motivo?.toLowerCase().includes('coordinadora')).length})
+              </button>
+              <button
+                onClick={() => setLogTabFilter('OMITIDOS')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  logTabFilter === 'OMITIDOS'
+                    ? 'bg-amber-600 text-white shadow'
+                    : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+                }`}
+              >
+                Omitidos / Duplicados
+              </button>
+            </div>
+
+            {/* Búsqueda por Texto */}
+            <div className="w-full sm:w-64">
+              <input
+                type="text"
+                placeholder="🔍 Buscar paciente o ID..."
+                value={logSearchText}
+                onChange={(e) => setLogSearchText(e.target.value)}
+                className="w-full px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+          </div>
+
+          {/* Tabla Resumen de Log */}
+          <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm">
+            <table className="w-full text-left text-xs text-slate-700 dark:text-slate-300">
+              <thead className="bg-slate-100 dark:bg-slate-900/80 uppercase font-bold text-slate-600 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700">
+                <tr>
+                  <th className="p-3">Estado</th>
+                  <th className="p-3">Identificación</th>
+                  <th className="p-3">Paciente</th>
+                  <th className="p-3">Correo Electrónico</th>
+                  <th className="p-3">Teléfono</th>
+                  <th className="p-3">Especialidad</th>
+                  <th className="p-3">Coordinadora</th>
+                  <th className="p-3">Detalle / Motivo</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
+                {detallesEnvio
+                  .filter(det => {
+                    const isEnviado = det.enviado === true || String(det.enviado).toLowerCase() === 'true';
+                    const isSinCoord = !det.nombre_coordinador || det.motivo?.toLowerCase().includes('coordinadora');
+                    
+                    if (logTabFilter === 'ENVIADOS' && !isEnviado) return false;
+                    if (logTabFilter === 'SIN_COORDINADORA' && !isSinCoord) return false;
+                    if (logTabFilter === 'OMITIDOS' && isEnviado) return false;
+
+                    if (logSearchText.trim()) {
+                      const query = logSearchText.toLowerCase();
+                      const matchName = det.nombre_paciente?.toLowerCase().includes(query);
+                      const matchId = String(det.id_usuario).includes(query);
+                      const matchIdent = det.identificacion?.toLowerCase().includes(query);
+                      const matchEmail = det.correo_electronico?.toLowerCase().includes(query);
+                      const matchPhone = det.telefono?.toLowerCase().includes(query);
+                      const matchCoord = det.nombre_coordinador?.toLowerCase().includes(query);
+                      return matchName || matchId || matchIdent || matchEmail || matchPhone || matchCoord;
+                    }
+                    return true;
+                  })
+                  .map((det, idx) => {
+                    const isEnviado = det.enviado === true || String(det.enviado).toLowerCase() === 'true';
+                    return (
+                      <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-700/40 transition-colors">
+                        <td className="p-3">
+                          {isEnviado ? (
+                            <span className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 text-[11px] font-bold inline-flex items-center gap-1">
+                              <span>✅</span> Enviado
+                            </span>
+                          ) : (
+                            <span className="px-2.5 py-1 rounded-full bg-red-100 text-red-800 dark:bg-red-950/80 dark:text-red-300 text-[11px] font-bold inline-flex items-center gap-1">
+                              <span>❌</span> No Enviado
+                            </span>
+                          )}
+                        </td>
+                        <td className="p-3 font-semibold text-slate-800 dark:text-slate-200">
+                          {det.identificacion || 'N/A'}
+                        </td>
+                        <td className="p-3 font-semibold text-slate-800 dark:text-slate-200">
+                          {det.nombre_paciente}
+                          <span className="block text-[11px] text-slate-400 font-normal">ID Usuario: {det.id_usuario}</span>
+                        </td>
+                        <td className="p-3 text-slate-600 dark:text-slate-300">
+                          {det.correo_electronico || 'Sin correo'}
+                        </td>
+                        <td className="p-3 text-slate-600 dark:text-slate-300">
+                          {det.telefono || 'Sin teléfono'}
+                        </td>
+                        <td className="p-3">{det.nombre_especialidad || 'Sin especialidad'}</td>
+                        <td className="p-3">
+                          {det.nombre_coordinador ? (
+                            <span className="text-slate-700 dark:text-slate-300 font-medium">{det.nombre_coordinador}</span>
+                          ) : (
+                            <span className="text-red-600 dark:text-red-400 font-semibold italic text-[11px] bg-red-50 dark:bg-red-950/60 px-2 py-0.5 rounded border border-red-200 dark:border-red-900">
+                              ⚠️ Sin Coordinadora
+                            </span>
+                          )}
+                        </td>
+                        <td className="p-3">
+                          <span className={`text-xs ${isEnviado ? 'text-emerald-700 dark:text-emerald-400' : 'text-amber-700 dark:text-amber-400 font-medium'}`}>
+                            {det.motivo}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Botones de Navegación del Paso 4 */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-slate-100 dark:border-slate-700">
             <button
-              disabled={enviando || loadingPlantilla || !plantillaHtml || !!plantillaError}
-              onClick={handleEnviarNotificaciones}
-              className="w-full sm:w-auto px-8 py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-sm shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              onClick={() => setStep(3)}
+              className="px-5 py-2 rounded-xl border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer"
             >
-              {enviando ? (
-                <>
-                  <span className="animate-spin">⏳</span>
-                  <span>Enviando...</span>
-                </>
-              ) : (
-                <>
-                  <span>🚀</span>
-                  <span>Enviar Notificaciones Ahora</span>
-                </>
-              )}
+              ⬅ Volver a Vista Previa (Paso 3)
+            </button>
+
+            <button
+              onClick={() => {
+                setStep(1);
+                setEnvioExitoso(false);
+                setMensajeResultado('');
+                setDetallesEnvio([]);
+                setSelectedPatientIds([]);
+                setSelectedCitaIds([]);
+              }}
+              className="px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm shadow-md transition-all flex items-center gap-2 cursor-pointer"
+            >
+              <span>🔄</span>
+              <span>Iniciar Nueva Notificación</span>
             </button>
           </div>
         </div>

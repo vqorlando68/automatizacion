@@ -57,12 +57,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
+    let outDetalles = responseJson?.detalles ?? responseJson;
+    if (typeof outDetalles === 'string') {
+      try {
+        outDetalles = JSON.parse(outDetalles);
+      } catch {
+        // Mantiene cadena si no es JSON válido
+      }
+    }
+
     const cantidadReceptores = (pacientes?.length || citas?.length || 0);
 
     return res.status(200).json({
-      success: true,
+      success: responseJson?.success !== false && responseJson?.success !== 'false',
       mensaje: responseJson?.mensaje || `Notificaciones enviadas correctamente a ${cantidadReceptores} destinatario(s).`,
-      detalles: responseJson || payload
+      cant_enviados: responseJson?.cant_enviados,
+      cant_omitidos: responseJson?.cant_omitidos,
+      detalles: outDetalles
     });
 
   } catch (err: any) {
@@ -72,7 +83,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       success: true,
       isMock: true,
       mensaje: `[Simulación] Envío registrado correctamente para ${cantidadReceptores} destinatario(s).`,
-      detalles: payload
+      detalles: []
     });
   }
 }

@@ -19,6 +19,7 @@ interface GirisPatient {
   nombre_convenio?: string;
   nombre_ciudad?: string;
   nombre_coordinador?: string;
+  tiene_atencion?: string;
   profesionales_asignados: AssignedProfessional[];
 }
 
@@ -516,6 +517,16 @@ export function EquipoMedico() {
                               <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/80 font-bold shrink-0">
                                 {pat.nombre_convenio || 'Sin Convenio'}
                               </span>
+
+                              {pat.tiene_atencion === 'S' && (
+                                <span 
+                                  className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/90 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 font-extrabold shrink-0 flex items-center gap-1 shadow-2xs"
+                                  title="El paciente posee al menos una solicitud de cita o tiene un acta médica"
+                                >
+                                  <span>📋</span>
+                                  <span>Con Solicitud de Cita o Acta</span>
+                                </span>
+                              )}
 
                               {/* TARJETA CON DETALLES AL PASAR EL MOUSE (HOVER) */}
                               <div className="hidden group-hover:block absolute left-0 top-full mt-1.5 w-72 p-3.5 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 text-xs rounded-2xl shadow-2xl backdrop-blur-md border border-slate-200 dark:border-slate-700 z-50 pointer-events-none space-y-2 transition-all">

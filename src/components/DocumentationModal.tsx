@@ -89,6 +89,7 @@ const DOCUMENTATION_DATA: Record<string, TabDoc> = {
     descripcion: 'Búsqueda de citas, selección de plantillas y envío masivo de notificaciones a pacientes.',
     tablas: [
       { nombre: 'TKR_CITAS', descripcion: 'Consultas y citas agendadas de los pacientes.' },
+      { nombre: 'TKR_EQUIPO_MEDICO', descripcion: 'Validación relacional de profesionales asignados al paciente.' },
       { nombre: 'TKR_USUARIOS', descripcion: 'Pacientes destinatarios y profesionales de la salud.' },
       { nombre: 'TKR_ESTADOS_CITA', descripcion: 'Estados de atención de las citas médicas (id_estado_cita).' },
       { nombre: 'TKR_PLANTILLAS', descripcion: 'Plantillas de mensajes predefinidos para notificaciones.' },
@@ -98,7 +99,7 @@ const DOCUMENTATION_DATA: Record<string, TabDoc> = {
     procedimientos: [
       {
         nombre: 'pkgln_automatizaciones.p_obtener_pacientes_notificacion',
-        descripcion: 'Consulta las citas y pacientes elegibles para notificación según filtros.',
+        descripcion: 'Consulta citas de pacientes filtrando que el profesional pertenezca a tkr_equipo_medico.',
         paramEntrada: `{\n  "is_giris": true,\n  "id_entidad": 10,\n  "id_convenio": 5,\n  "id_especialidad": null,\n  "id_profesional": 65,\n  "fecha_hasta": "2026-08-30"\n}`,
         paramSalida: `{\n  "success": true,\n  "data": [\n    {\n      "id_cita": 101,\n      "codigo_cita": "CIT-101",\n      "fecha_cita": "2026-08-15",\n      "hora_cita": "09:00 AM",\n      "id_usuario": 4340,\n      "nombre_paciente": "Joshua Prueba",\n      "identificacion": "12345667",\n      "id_estado_cita": 10,\n      "estado_cita": "Asignada"\n    }\n  ]\n}`
       },
@@ -131,14 +132,16 @@ const DOCUMENTATION_DATA: Record<string, TabDoc> = {
       { nombre: 'TKR_USUARIOS_COHORTE', descripcion: 'Relación con el ID del convenio (id_convenio) y coordinador (id_coordinador).' },
       { nombre: 'TKR_CONVENIOS', descripcion: 'Convenios de salud e id_entidad_hijo.' },
       { nombre: 'TKR_ENTIDADES', descripcion: 'Entidades de salud y nombre de la entidad (nombre_convenio).' },
-      { nombre: 'TKR_CIUDADES', descripcion: 'Catálogo de ciudades de residencia del paciente.' }
+      { nombre: 'TKR_CIUDADES', descripcion: 'Catálogo de ciudades de residencia del paciente.' },
+      { nombre: 'TKR_CITAS', descripcion: 'Citas médicas del usuario en estados 10 o 16 para validar indicador de atención.' },
+      { nombre: 'TKR_ACTAS_MEDICAS', descripcion: 'Actas médicas asociadas al usuario para validar indicador de atención.' }
     ],
     procedimientos: [
       {
         nombre: 'pkgln_automatizaciones.p_obtener_pacientes_giris_equipo',
-        descripcion: 'Consulta usuarios pacientes GIRIS y sus médicos asignados en tkr_equipo_medico.',
+        descripcion: 'Consulta usuarios pacientes GIRIS, indicador de atención (citas 10/16 o actas) y sus médicos asignados.',
         paramEntrada: `{\n  "busqueda": "Coomeva"\n}`,
-        paramSalida: `{\n  "success": true,\n  "pacientes": [\n    {\n      "id_usuario": 4340,\n      "nombres": "Joshua",\n      "apellidos": "Prueba",\n      "nombre_completo": "Joshua Prueba",\n      "identificacion": "12345667",\n      "correo_electronico": "joshua@gmail.com",\n      "telefono": "573104868742",\n      "direccion": "Calle 10 # 5-20",\n      "nombre_convenio": "Coomeva MP Cali",\n      "nombre_ciudad": "Cali",\n      "nombre_coordinador": "Orlando Valverde",\n      "profesionales_asignados": [\n        { "id_profesional": 65, "nombre_profesional": "Rodolfo Vargas" }\n      ]\n    }\n  ]\n}`
+        paramSalida: `{\n  "success": true,\n  "pacientes": [\n    {\n      "id_usuario": 4340,\n      "nombres": "Joshua",\n      "apellidos": "Prueba",\n      "nombre_completo": "Joshua Prueba",\n      "identificacion": "12345667",\n      "correo_electronico": "joshua@gmail.com",\n      "telefono": "573104868742",\n      "direccion": "Calle 10 # 5-20",\n      "nombre_convenio": "Coomeva MP Cali",\n      "nombre_ciudad": "Cali",\n      "nombre_coordinador": "Orlando Valverde",\n      "tiene_atencion": "S",\n      "profesionales_asignados": [\n        { "id_profesional": 65, "nombre_profesional": "Rodolfo Vargas" }\n      ]\n    }\n  ]\n}`
       },
       {
         nombre: 'pkgln_automatizaciones.p_guardar_equipo_medico',

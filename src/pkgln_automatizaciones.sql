@@ -1783,6 +1783,12 @@ CREATE OR REPLACE PACKAGE BODY pkgln_automatizaciones AS
                      AND (v_id_especialidad IS NULL OR c.id_especialidad = v_id_especialidad)
                      AND (v_id_profesional IS NULL OR c.id_profesional = v_id_profesional)
                      AND (v_fecha_hasta IS NULL OR TRUNC(c.fecha_inicio_cita) <= TO_DATE(v_fecha_hasta, 'YYYY-MM-DD'))
+                     AND EXISTS (
+                         SELECT 1
+                         FROM tkr_equipo_medico eq
+                         WHERE eq.id_usuario = c.id_usuario
+                           AND eq.id_profesional = c.id_profesional
+                     )
                 )
             ) INTO p_out_json
             FROM DUAL;
@@ -1836,6 +1842,7 @@ CREATE OR REPLACE PACKAGE BODY pkgln_automatizaciones AS
             'id_plantilla' VALUE v_id_plantilla,
             'texto_plantilla' VALUE v_texto,
             'asunto' VALUE 'Notificación de Atención Médica'
+            RETURNING CLOB
         ) INTO p_out_json
         FROM DUAL;
     EXCEPTION
@@ -1849,28 +1856,342 @@ CREATE OR REPLACE PACKAGE BODY pkgln_automatizaciones AS
         p_in_json  IN  CLOB,
         p_out_json OUT CLOB
     ) AS
-        v_is_giris BOOLEAN;
-        v_id_plantilla NUMBER;
-        v_id_profesional NUMBER;
-        v_cant_pacientes NUMBER := 0;
+        vro_parametro        tkr_parametros%ROWTYPE;
+        v_is_giris           BOOLEAN;
+        v_id_plantilla       NUMBER;
+        v_plantilla_base     CLOB;
+        v_cuerpo_html        CLOB;
+        v_asunto             VARCHAR2(500) := 'Notificación de Atención Médica - Teker Salud';
+        v_cant_enviados      NUMBER := 0;
+        v_cant_omitidos      NUMBER := 0;
+
+        -- Variables para plantilla y sustituciones
+        v_id_cita            NUMBER;
+        v_id_usuario         NUMBER;
+        v_id_entidad         NUMBER;
+        v_id_especialidad    NUMBER;
+        v_id_profesional     NUMBER;
+
+        v_nombre_paciente         VARCHAR2(300);
+        v_identificacion_paciente VARCHAR2(100);
+        v_correo_paciente         VARCHAR2(300);
+        v_telefono_paciente       VARCHAR2(100);
+        v_nombre_entidad          VARCHAR2(300);
+        v_nombre_coordinador      VARCHAR2(300);
+        v_nombre_especialidad     VARCHAR2(300);
+        v_nombre_profesional      VARCHAR2(300);
+        v_usuario_prof            VARCHAR2(100);
+        v_enlace                  VARCHAR2(2000);
+        v_hash_cadena             VARCHAR2(200);
+
+        v_id_prof_json       NUMBER;
+        v_id_entidad_json    NUMBER;
+        v_error_envio        VARCHAR2(4000);
+
+        -- Colección en memoria para validar envío único por paciente y especialidad
+        TYPE t_paciente_esp_map IS TABLE OF BOOLEAN INDEX BY VARCHAR2(100);
+        v_enviados_map       t_paciente_esp_map;
+        v_clave_unica        VARCHAR2(100);
+
+        -- Colección para almacenar detalles de cada paciente procesado
+        TYPE t_detalle_rec IS RECORD (
+            id_usuario          NUMBER,
+            identificacion      VARCHAR2(100),
+            nombre_paciente     VARCHAR2(300),
+            correo_electronico  VARCHAR2(300),
+            telefono            VARCHAR2(100),
+            nombre_especialidad VARCHAR2(300),
+            nombre_coordinador  VARCHAR2(300),
+            enviado             VARCHAR2(10),
+            motivo              VARCHAR2(400)
+        );
+        TYPE t_detalles_tbl IS TABLE OF t_detalle_rec INDEX BY PLS_INTEGER;
+        v_detalles_tbl       t_detalles_tbl;
+        v_idx                PLS_INTEGER := 0;
+        v_json_detalles      CLOB;
+
+        -- Cursor dinámico sobre array de citas o pacientes en JSON (Deduplicado por Cita)
+        CURSOR c_items IS
+            -- 1. Si el JSON contiene citas (en $.citas[*] o $.pacientes[*].citas[*]), deduplicar por id_cita
+            SELECT t.id_cita,
+                   (SELECT c.id_usuario FROM tkr_citas c WHERE c.id = t.id_cita) AS id_usuario
+            FROM (
+                SELECT DISTINCT TO_NUMBER(id_str) AS id_cita
+                FROM (
+                    SELECT id_str
+                    FROM JSON_TABLE(p_in_json, '$.citas[*]' COLUMNS (id_str VARCHAR2(100) PATH '$'))
+                    UNION ALL
+                    SELECT c_id_str
+                    FROM JSON_TABLE(p_in_json, '$.pacientes[*]'
+                        COLUMNS (
+                            NESTED PATH '$.citas[*]' COLUMNS (
+                                c_id_str VARCHAR2(100) PATH '$'
+                            )
+                        )
+                    )
+                ) WHERE id_str IS NOT NULL
+            ) t
+            UNION ALL
+            -- 2. Si el JSON NO contiene citas (Modo Estándar), tomar pacientes de $.pacientes[*]
+            SELECT NULL AS id_cita,
+                   TO_NUMBER(p_id_str) AS id_usuario
+            FROM (
+                SELECT DISTINCT p_id_str
+                FROM JSON_TABLE(p_in_json, '$.pacientes[*]' COLUMNS (p_id_str VARCHAR2(100) PATH '$.id_usuario'))
+                WHERE p_id_str IS NOT NULL
+            )
+            WHERE NOT EXISTS (
+                SELECT 1
+                FROM JSON_TABLE(p_in_json, '$.citas[*]' COLUMNS (id_str VARCHAR2(100) PATH '$'))
+                WHERE id_str IS NOT NULL
+            );
     BEGIN
         v_is_giris := CASE 
             WHEN LOWER(NVL(JSON_VALUE(p_in_json, '$.is_giris'), 'false')) IN ('true', '1') THEN TRUE 
             ELSE FALSE 
         END;
-        v_id_plantilla := TO_NUMBER(JSON_VALUE(p_in_json, '$.id_plantilla'));
-        v_id_profesional := TO_NUMBER(JSON_VALUE(p_in_json, '$.id_profesional'));
+        v_id_plantilla    := TO_NUMBER(JSON_VALUE(p_in_json, '$.id_plantilla'));
+        v_id_prof_json    := TO_NUMBER(JSON_VALUE(p_in_json, '$.id_profesional'));
+        v_id_entidad_json := TO_NUMBER(JSON_VALUE(p_in_json, '$.id_entidad'));
 
-        -- Contar la cantidad de usuarios/pacientes procesados en el JSON
-        SELECT COUNT(*)
-          INTO v_cant_pacientes
-          FROM JSON_TABLE(p_in_json, '$.pacientes[*]' COLUMNS (id_usuario NUMBER PATH '$.id_usuario'));
+        -- 1. Obtener la plantilla base de la tabla tkr_plantillas
+        BEGIN
+            SELECT pl.texto_plantilla
+              INTO v_plantilla_base
+              FROM tkr_plantillas pl
+             WHERE pl.id = v_id_plantilla;
+        EXCEPTION
+            WHEN NO_DATA_FOUND THEN
+                p_out_json := '{"success":false,"error":"La plantilla con ID ' || v_id_plantilla || ' no existe en la base de datos."}';
+                RETURN;
+        END;
 
-        SELECT JSON_OBJECT(
-            'success' VALUE 'true',
-            'mensaje' VALUE 'Notificaciones registradas correctamente para ' || v_cant_pacientes || ' paciente(s).'
-        ) INTO p_out_json
-        FROM DUAL;
+        -- 2. Recorrer los registros seleccionados
+        FOR r IN c_items LOOP
+            v_id_cita := r.id_cita;
+            v_id_usuario := r.id_usuario;
+
+            -- Limpiar variables para esta iteración
+            v_id_entidad              := NULL;
+            v_id_especialidad         := NULL;
+            v_id_profesional          := NULL;
+            v_nombre_paciente         := NULL;
+            v_identificacion_paciente := NULL;
+            v_correo_paciente         := NULL;
+            v_telefono_paciente       := NULL;
+            v_nombre_entidad          := NULL;
+            v_nombre_coordinador      := NULL;
+            v_nombre_especialidad     := NULL;
+            v_nombre_profesional      := NULL;
+            v_usuario_prof            := NULL;
+            v_enlace                  := NULL;
+
+            -- Obtener datos de tkr_citas si se proporcionó id_cita
+            IF v_id_cita IS NOT NULL THEN
+                BEGIN
+                    SELECT c.id_usuario, c.id_entidad, c.id_especialidad, c.id_profesional
+                      INTO v_id_usuario, v_id_entidad, v_id_especialidad, v_id_profesional
+                      FROM tkr_citas c
+                     WHERE c.id = v_id_cita;
+                EXCEPTION
+                    WHEN OTHERS THEN NULL;
+                END;
+            END IF;
+
+            -- Aplicar fallbacks desde los parámetros generales del JSON si venían nulos
+            v_id_profesional := NVL(v_id_profesional, v_id_prof_json);
+            v_id_entidad     := NVL(v_id_entidad, v_id_entidad_json);
+
+            -- {{NOMBRE_PACIENTE}}, identificacion, correo y telefono (tkr_usuarios)
+            IF v_id_usuario IS NOT NULL THEN
+                BEGIN
+                    SELECT u.identificacion, TRIM(u.nombres || ' ' || u.apellidos), u.correo_electronico, u.telefono
+                      INTO v_identificacion_paciente, v_nombre_paciente, v_correo_paciente, v_telefono_paciente
+                      FROM tkr_usuarios u
+                     WHERE u.id = v_id_usuario;
+                EXCEPTION
+                    WHEN OTHERS THEN NULL;
+                END;
+
+                -- {{NOMBRE_COORDINADORA}} (tkr_usuarios_cohorte -> tkr_usuarios id_coordinador)
+                BEGIN
+                    SELECT TRIM(coord.nombres || ' ' || coord.apellidos)
+                      INTO v_nombre_coordinador
+                      FROM tkr_usuarios_cohorte uc
+                      JOIN tkr_usuarios coord ON coord.id = uc.id_coordinador
+                     WHERE uc.id_usuario = v_id_usuario
+                       AND ROWNUM = 1;
+                EXCEPTION
+                    WHEN OTHERS THEN NULL;
+                END;
+            END IF;
+
+            -- {{NOMBRE_ENTIDAD}} (tkr_entidades)
+            IF v_id_entidad IS NOT NULL THEN
+                BEGIN
+                    SELECT e.nombre_entidad
+                      INTO v_nombre_entidad
+                      FROM tkr_entidades e
+                     WHERE e.id = v_id_entidad;
+                EXCEPTION
+                    WHEN OTHERS THEN NULL;
+                END;
+            END IF;
+
+            -- {{NOMBRE_ESPECIALIDAD}} (tkr_especialidades)
+            IF v_id_especialidad IS NOT NULL THEN
+                BEGIN
+                    SELECT esp.nombre_especialidad
+                      INTO v_nombre_especialidad
+                      FROM tkr_especialidades esp
+                     WHERE esp.id = v_id_especialidad;
+                EXCEPTION
+                    WHEN OTHERS THEN NULL;
+                END;
+            END IF;
+
+            -- {{NOMBRE_PROFESIONAL}} y usuario del profesional (tkr_usuarios)
+            IF v_id_profesional IS NOT NULL THEN
+                BEGIN
+                    SELECT TRIM(p.nombres || ' ' || p.apellidos), p.usuario
+                      INTO v_nombre_profesional, v_usuario_prof
+                      FROM tkr_usuarios p
+                     WHERE p.id = v_id_profesional;
+                EXCEPTION
+                    WHEN OTHERS THEN NULL;
+                END;
+            END IF;
+
+            -- VALIDACIÓN 1: Si no tiene coordinadora asignada, NO se envía el correo
+            IF v_nombre_coordinador IS NULL OR TRIM(v_nombre_coordinador) IS NULL THEN
+                v_idx := v_idx + 1;
+                v_detalles_tbl(v_idx).id_usuario          := v_id_usuario;
+                v_detalles_tbl(v_idx).identificacion      := v_identificacion_paciente;
+                v_detalles_tbl(v_idx).nombre_paciente     := NVL(v_nombre_paciente, 'Paciente ' || v_id_usuario);
+                v_detalles_tbl(v_idx).correo_electronico  := v_correo_paciente;
+                v_detalles_tbl(v_idx).telefono            := v_telefono_paciente;
+                v_detalles_tbl(v_idx).nombre_especialidad := v_nombre_especialidad;
+                v_detalles_tbl(v_idx).nombre_coordinador  := NULL;
+                v_detalles_tbl(v_idx).enviado             := 'false';
+                v_detalles_tbl(v_idx).motivo              := 'No enviado por falta de coordinadora asignada';
+                v_cant_omitidos := v_cant_omitidos + 1;
+                CONTINUE;
+            END IF;
+
+            -- VALIDACIÓN 2: Envío único por combinación Paciente + Especialidad
+            v_clave_unica := TO_CHAR(NVL(v_id_usuario, 0)) || '-' || TO_CHAR(NVL(v_id_especialidad, 0));
+            IF v_enviados_map.EXISTS(v_clave_unica) THEN
+                v_idx := v_idx + 1;
+                v_detalles_tbl(v_idx).id_usuario          := v_id_usuario;
+                v_detalles_tbl(v_idx).identificacion      := v_identificacion_paciente;
+                v_detalles_tbl(v_idx).nombre_paciente     := NVL(v_nombre_paciente, 'Paciente ' || v_id_usuario);
+                v_detalles_tbl(v_idx).correo_electronico  := v_correo_paciente;
+                v_detalles_tbl(v_idx).telefono            := v_telefono_paciente;
+                v_detalles_tbl(v_idx).nombre_especialidad := v_nombre_especialidad;
+                v_detalles_tbl(v_idx).nombre_coordinador  := v_nombre_coordinador;
+                v_detalles_tbl(v_idx).enviado             := 'false';
+                v_detalles_tbl(v_idx).motivo              := 'No enviado: Duplicado para la especialidad';
+                v_cant_omitidos := v_cant_omitidos + 1;
+                CONTINUE;
+            END IF;
+
+            -- Construcción de {{ENLACE}} usando pkgtkr_parametros_dao y DBMS_CRYPTO
+            IF pkgtkr_parametros_dao.f_existe (-52, vro_parametro) = TRUE THEN
+                IF v_id_cita IS NOT NULL THEN
+                    BEGIN
+                        v_hash_cadena := RAWTOHEX(DBMS_CRYPTO.hash(UTL_I18N.string_to_raw(LOWER(TO_CHAR(v_id_cita)), 'AL32UTF8'), 3));
+                    EXCEPTION
+                        WHEN OTHERS THEN v_hash_cadena := '';
+                    END;
+                END IF;
+
+                v_enlace := vro_parametro.valor_parametro
+                         || '/directorio/'
+                         || v_usuario_prof
+                         || '?id_usuario=' || v_id_usuario
+                         || '&id_entidad=' || v_id_entidad
+                         || '&id_especialidad=' || v_id_especialidad
+                         || '&cadena=' || v_hash_cadena;
+            END IF;
+
+            -- Copiar plantilla base y realizar las sustituciones requeridas
+            v_cuerpo_html := v_plantilla_base;
+            v_cuerpo_html := REPLACE(v_cuerpo_html, '{{RUTA_LOGO}}', 'https://www.tekerapp.co/assets/logo.png');
+            v_cuerpo_html := REPLACE(v_cuerpo_html, '{{ALT_LOGO}}', 'Teker Salud');
+            v_cuerpo_html := REPLACE(v_cuerpo_html, '{{NOMBRE_PACIENTE}}', NVL(v_nombre_paciente, ''));
+            v_cuerpo_html := REPLACE(v_cuerpo_html, '{{NOMBRE_ENTIDAD}}', NVL(v_nombre_entidad, ''));
+            v_cuerpo_html := REPLACE(v_cuerpo_html, '{{NOMBRE_COORDINADORA}}', NVL(v_nombre_coordinador, ''));
+            v_cuerpo_html := REPLACE(v_cuerpo_html, '{{NOMBRE_ESPECIALIDAD}}', NVL(v_nombre_especialidad, ''));
+            v_cuerpo_html := REPLACE(v_cuerpo_html, '{{NOMBRE_PROFESIONAL}}', NVL(v_nombre_profesional, ''));
+            v_cuerpo_html := REPLACE(v_cuerpo_html, '{{ENLACE}}', NVL(v_enlace, ''));
+
+            -- Fallback si el usuario no tiene correo en tkr_usuarios
+            v_correo_paciente := NVL(v_correo_paciente, 'vqorlando@gmail.com');
+
+            -- Enviar el correo usando apex_mail.send directamente
+            BEGIN
+                apex_mail.send(
+                    p_to        => v_correo_paciente,
+                    p_from      => 'soporte@teker.co',
+                    p_body      => TO_CLOB('Estimado(a) paciente, por favor revise el contenido HTML de este correo.'),
+                    p_body_html => v_cuerpo_html,
+                    p_subj      => v_asunto
+                );
+                apex_mail.push_queue;
+
+                -- Marcar combinación (id_usuario - id_especialidad) como procesada
+                v_enviados_map(v_clave_unica) := TRUE;
+                v_cant_enviados := v_cant_enviados + 1;
+
+                v_idx := v_idx + 1;
+                v_detalles_tbl(v_idx).id_usuario          := v_id_usuario;
+                v_detalles_tbl(v_idx).identificacion      := v_identificacion_paciente;
+                v_detalles_tbl(v_idx).nombre_paciente     := NVL(v_nombre_paciente, 'Paciente ' || v_id_usuario);
+                v_detalles_tbl(v_idx).correo_electronico  := v_correo_paciente;
+                v_detalles_tbl(v_idx).telefono            := v_telefono_paciente;
+                v_detalles_tbl(v_idx).nombre_especialidad := v_nombre_especialidad;
+                v_detalles_tbl(v_idx).nombre_coordinador  := v_nombre_coordinador;
+                v_detalles_tbl(v_idx).enviado             := 'true';
+                v_detalles_tbl(v_idx).motivo              := 'Enviado correctamente';
+            EXCEPTION
+                WHEN OTHERS THEN
+                    v_error_envio := SQLERRM;
+                    v_cant_omitidos := v_cant_omitidos + 1;
+                    v_idx := v_idx + 1;
+                    v_detalles_tbl(v_idx).id_usuario          := v_id_usuario;
+                    v_detalles_tbl(v_idx).identificacion      := v_identificacion_paciente;
+                    v_detalles_tbl(v_idx).nombre_paciente     := NVL(v_nombre_paciente, 'Paciente ' || v_id_usuario);
+                    v_detalles_tbl(v_idx).correo_electronico  := v_correo_paciente;
+                    v_detalles_tbl(v_idx).telefono            := v_telefono_paciente;
+                    v_detalles_tbl(v_idx).nombre_especialidad := v_nombre_especialidad;
+                    v_detalles_tbl(v_idx).nombre_coordinador  := v_nombre_coordinador;
+                    v_detalles_tbl(v_idx).enviado             := 'false';
+                    v_detalles_tbl(v_idx).motivo              := 'Error al enviar correo: ' || SQLERRM;
+            END;
+
+        END LOOP;
+
+        -- Construir el JSON de array con el detalle de cada paciente procesado
+        v_json_detalles := '[';
+        FOR i IN 1..v_idx LOOP
+            IF i > 1 THEN
+                v_json_detalles := v_json_detalles || ',';
+            END IF;
+            v_json_detalles := v_json_detalles || '{'
+                || '"id_usuario":' || NVL(TO_CHAR(v_detalles_tbl(i).id_usuario), 'null') || ','
+                || '"identificacion":"' || REPLACE(REPLACE(NVL(v_detalles_tbl(i).identificacion, ''), '\', '\\'), '"', '\"') || '",'
+                || '"nombre_paciente":"' || REPLACE(REPLACE(NVL(v_detalles_tbl(i).nombre_paciente, ''), '\', '\\'), '"', '\"') || '",'
+                || '"correo_electronico":"' || REPLACE(REPLACE(NVL(v_detalles_tbl(i).correo_electronico, ''), '\', '\\'), '"', '\"') || '",'
+                || '"telefono":"' || REPLACE(REPLACE(NVL(v_detalles_tbl(i).telefono, ''), '\', '\\'), '"', '\"') || '",'
+                || '"nombre_especialidad":"' || REPLACE(REPLACE(NVL(v_detalles_tbl(i).nombre_especialidad, ''), '\', '\\'), '"', '\"') || '",'
+                || '"nombre_coordinador":' || CASE WHEN v_detalles_tbl(i).nombre_coordinador IS NULL THEN 'null' ELSE '"' || REPLACE(REPLACE(v_detalles_tbl(i).nombre_coordinador, '\', '\\'), '"', '\"') || '"' END || ','
+                || '"enviado":' || v_detalles_tbl(i).enviado || ','
+                || '"motivo":"' || REPLACE(REPLACE(NVL(v_detalles_tbl(i).motivo, ''), '\', '\\'), '"', '\"') || '"'
+                || '}';
+        END LOOP;
+        v_json_detalles := v_json_detalles || ']';
+
+        p_out_json := '{"success":true,"mensaje":"Proceso finalizado. ' || v_cant_enviados || ' enviada(s), ' || v_cant_omitidos || ' omitida(s).","cant_enviados":' || v_cant_enviados || ',"cant_omitidos":' || v_cant_omitidos || ',"detalles":' || v_json_detalles || '}';
     EXCEPTION
         WHEN OTHERS THEN
             p_out_json := '{"success":false,"error":"' || REPLACE(SQLERRM, '"', '\"') || '"}';
@@ -1906,6 +2227,19 @@ CREATE OR REPLACE PACKAGE BODY pkgln_automatizaciones AS
                 ),
                 'nombre_ciudad' VALUE ciu.nombre_ciudad,
                 'nombre_coordinador' VALUE TRIM(coord.nombres || ' ' || coord.apellidos),
+                'tiene_atencion' VALUE CASE 
+                    WHEN EXISTS (
+                        SELECT 1 
+                        FROM tkr_citas c 
+                        WHERE c.id_usuario = u.id 
+                          AND c.id_estado_cita IN (10, 16)
+                    ) OR EXISTS (
+                        SELECT 1 
+                        FROM tkr_actas_medicas a 
+                        WHERE a.id_usuario = u.id
+                    ) THEN 'S'
+                    ELSE 'N'
+                END,
                 'profesionales_asignados' VALUE (
                     SELECT NVL(
                         JSON_ARRAYAGG(
