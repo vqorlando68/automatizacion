@@ -636,28 +636,28 @@ export function Autonotificaciones() {
         {/* Asistente Stepper (4 Pasos) */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6">
           <div className={`p-3 rounded-xl flex items-center gap-2.5 transition-all ${
-            step === 1 ? 'bg-white text-indigo-900 shadow-md font-bold' : 'bg-white/10 text-white opacity-80'
+            step === 1 ? 'bg-white shadow-md font-bold' : 'bg-white/10 text-white opacity-80'
           }`}>
-            <span className="w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs font-bold shrink-0">1</span>
-            <span className="text-xs font-medium truncate">1. Configuración</span>
+            <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${step === 1 ? 'bg-indigo-600 text-white' : 'bg-white/20 text-white'}`}>1</span>
+            <span className={`text-xs font-bold truncate ${step === 1 ? 'text-slate-900 dark:text-slate-900' : 'text-white'}`}>1. Configuración</span>
           </div>
           <div className={`p-3 rounded-xl flex items-center gap-2.5 transition-all ${
-            step === 2 ? 'bg-white text-indigo-900 shadow-md font-bold' : 'bg-white/10 text-white opacity-80'
+            step === 2 ? 'bg-white shadow-md font-bold' : 'bg-white/10 text-white opacity-80'
           }`}>
-            <span className="w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs font-bold shrink-0">2</span>
-            <span className="text-xs font-medium truncate">2. Pacientes / Citas</span>
+            <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${step === 2 ? 'bg-indigo-600 text-white' : 'bg-white/20 text-white'}`}>2</span>
+            <span className={`text-xs font-bold truncate ${step === 2 ? 'text-slate-900 dark:text-slate-900' : 'text-white'}`}>2. Pacientes / Citas</span>
           </div>
           <div className={`p-3 rounded-xl flex items-center gap-2.5 transition-all ${
-            step === 3 ? 'bg-white text-indigo-900 shadow-md font-bold' : 'bg-white/10 text-white opacity-80'
+            step === 3 ? 'bg-white shadow-md font-bold' : 'bg-white/10 text-white opacity-80'
           }`}>
-            <span className="w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs font-bold shrink-0">3</span>
-            <span className="text-xs font-medium truncate">3. Vista Previa</span>
+            <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${step === 3 ? 'bg-indigo-600 text-white' : 'bg-white/20 text-white'}`}>3</span>
+            <span className={`text-xs font-bold truncate ${step === 3 ? 'text-slate-900 dark:text-slate-900' : 'text-white'}`}>3. Vista Previa</span>
           </div>
           <div className={`p-3 rounded-xl flex items-center gap-2.5 transition-all ${
-            step === 4 ? 'bg-white text-indigo-900 shadow-md font-bold' : 'bg-white/10 text-white opacity-80'
+            step === 4 ? 'bg-white shadow-md font-bold' : 'bg-white/10 text-white opacity-80'
           }`}>
-            <span className="w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs font-bold shrink-0">4</span>
-            <span className="text-xs font-medium truncate">4. Resultados</span>
+            <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${step === 4 ? 'bg-indigo-600 text-white' : 'bg-white/20 text-white'}`}>4</span>
+            <span className={`text-xs font-bold truncate ${step === 4 ? 'text-slate-900 dark:text-slate-900' : 'text-white'}`}>4. Resultados</span>
           </div>
         </div>
       </div>

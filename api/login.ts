@@ -15,15 +15,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     // Intentar validar con la función de la base de datos Oracle
-    const query = `BEGIN :result := pkgln_seguridad.f_validar_clave(:usuario, :clave, 1); END;`;
+    const query = `BEGIN :resultado := pkgln_seguridad.f_validar_clave(:usuario, :clave, :parametro); END;`;
     const result = await executeQuery(query, {
-      result: { dir: oracledb.BIND_OUT, type: oracledb.NUMBER },
+      resultado: { dir: oracledb.BIND_OUT, type: oracledb.NUMBER },
       usuario: username,
       clave: password,
+      parametro: 2,
     });
 
-    const outBinds = result.outBinds as { result: number } | undefined;
-    const isValid = outBinds?.result === 1;
+    const outBinds = result.outBinds as { resultado: number } | undefined;
+    const isValid = outBinds?.resultado === 1;
 
     if (isValid) {
       return res.status(200).json({ success: true, username });
