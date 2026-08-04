@@ -1102,11 +1102,24 @@ function App() {
             TEKER AUTOMATIZACIÓN
           </span>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
           {user && (
-            <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-300 border border-indigo-500/20">
-              👤 {user}
-            </span>
+            <>
+              <span className="text-xs font-semibold px-2.5 py-1.5 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-300 border border-indigo-500/20 flex items-center gap-1.5">
+                👤 {user}
+              </span>
+              <button
+                onClick={handleLogout}
+                className="px-3 py-1.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 border border-red-500/20 transition-all duration-200 cursor-pointer active:scale-95 shadow-xs flex items-center gap-1.5 text-xs font-bold"
+                aria-label="Cerrar Sesión"
+                title="Cerrar Sesión"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+                <span>Cerrar Sesión</span>
+              </button>
+            </>
           )}
           <button
             onClick={toggleTheme}
@@ -1298,14 +1311,6 @@ function App() {
                 </button>
               </nav>
             </div>
-
-            <button
-              onClick={handleLogout}
-              className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-semibold text-red-600 dark:text-red-400 hover:bg-red-500/10 transition-all duration-200 cursor-pointer"
-            >
-              <span>🚪</span>
-              Cerrar Sesión
-            </button>
           </aside>
 
           {/* Panel Principal */}
