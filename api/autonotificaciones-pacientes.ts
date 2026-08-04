@@ -11,10 +11,10 @@ const MOCK_PACIENTES = [
 ];
 
 const MOCK_CITAS_GIRIS = [
-  { id_cita: 1001, codigo_cita: 'CT-88901', fecha_cita: '2026-08-05', hora_cita: '08:00 AM', nombre_paciente: 'Roberto Gómez', identificacion: '10203040', id_estado_cita: 10, estado_cita: 'Programada' },
-  { id_cita: 1002, codigo_cita: 'CT-88902', fecha_cita: '2026-08-05', hora_cita: '09:30 AM', nombre_paciente: 'Clara López', identificacion: '50607080', id_estado_cita: 16, estado_cita: 'Confirmada' },
-  { id_cita: 1003, codigo_cita: 'CT-88903', fecha_cita: '2026-08-06', hora_cita: '10:00 AM', nombre_paciente: 'Esteban Quito', identificacion: '90100110', id_estado_cita: 10, estado_cita: 'Programada' },
-  { id_cita: 1004, codigo_cita: 'CT-88904', fecha_cita: '2026-08-07', hora_cita: '02:15 PM', nombre_paciente: 'Diana Prince', identificacion: '12131415', id_estado_cita: 16, estado_cita: 'Confirmada' }
+  { id_cita: 1001, codigo_cita: 'CT-88901', fecha_cita: '2026-08-05', hora_cita: '08:00 AM', nombre_paciente: 'Roberto Gómez', identificacion: '10203040', id_estado_cita: 10, estado_cita: 'Programada', nombre_coordinador: 'Dra. Carolina Vargas' },
+  { id_cita: 1002, codigo_cita: 'CT-88902', fecha_cita: '2026-08-05', hora_cita: '09:30 AM', nombre_paciente: 'Clara López', identificacion: '50607080', id_estado_cita: 16, estado_cita: 'Confirmada', nombre_coordinador: 'Dr. Fernando Salazar' },
+  { id_cita: 1003, codigo_cita: 'CT-88903', fecha_cita: '2026-08-06', hora_cita: '10:00 AM', nombre_paciente: 'Esteban Quito', identificacion: '90100110', id_estado_cita: 10, estado_cita: 'Programada', nombre_coordinador: 'Dra. Carolina Vargas' },
+  { id_cita: 1004, codigo_cita: 'CT-88904', fecha_cita: '2026-08-07', hora_cita: '02:15 PM', nombre_paciente: 'Diana Prince', identificacion: '12131415', id_estado_cita: 16, estado_cita: 'Confirmada', nombre_coordinador: 'Dra. Patricia Mendieta' }
 ];
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -63,10 +63,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const selectedPool = pool[idx];
 
     return [
-      { id_cita: 1000 + profSeed * 10 + 1, codigo_cita: `CT-${profSeed}-01`, fecha_cita: dateStr, hora_cita: '08:00 AM', nombre_paciente: selectedPool[0].name, identificacion: selectedPool[0].id, id_estado_cita: 10, estado_cita: 'Programada' },
-      { id_cita: 1000 + profSeed * 10 + 2, codigo_cita: `CT-${profSeed}-02`, fecha_cita: dateStr, hora_cita: '09:30 AM', nombre_paciente: selectedPool[1].name, identificacion: selectedPool[1].id, id_estado_cita: 16, estado_cita: 'Confirmada' },
-      { id_cita: 1000 + profSeed * 10 + 3, codigo_cita: `CT-${profSeed}-03`, fecha_cita: dateStr, hora_cita: '10:00 AM', nombre_paciente: selectedPool[2].name, identificacion: selectedPool[2].id, id_estado_cita: 10, estado_cita: 'Programada' },
-      { id_cita: 1000 + profSeed * 10 + 4, codigo_cita: `CT-${profSeed}-04`, fecha_cita: dateStr, hora_cita: '02:15 PM', nombre_paciente: selectedPool[3].name, identificacion: selectedPool[3].id, id_estado_cita: 16, estado_cita: 'Confirmada' }
+      { id_cita: 1000 + profSeed * 10 + 1, codigo_cita: `CT-${profSeed}-01`, fecha_cita: dateStr, hora_cita: '08:00 AM', nombre_paciente: selectedPool[0].name, identificacion: selectedPool[0].id, id_estado_cita: 10, estado_cita: 'Programada', nombre_coordinador: 'Dra. Carolina Vargas' },
+      { id_cita: 1000 + profSeed * 10 + 2, codigo_cita: `CT-${profSeed}-02`, fecha_cita: dateStr, hora_cita: '09:30 AM', nombre_paciente: selectedPool[1].name, identificacion: selectedPool[1].id, id_estado_cita: 16, estado_cita: 'Confirmada', nombre_coordinador: 'Dr. Fernando Salazar' },
+      { id_cita: 1000 + profSeed * 10 + 3, codigo_cita: `CT-${profSeed}-03`, fecha_cita: dateStr, hora_cita: '10:00 AM', nombre_paciente: selectedPool[2].name, identificacion: selectedPool[2].id, id_estado_cita: 10, estado_cita: 'Programada', nombre_coordinador: 'Dra. Carolina Vargas' },
+      { id_cita: 1000 + profSeed * 10 + 4, codigo_cita: `CT-${profSeed}-04`, fecha_cita: dateStr, hora_cita: '02:15 PM', nombre_paciente: selectedPool[3].name, identificacion: selectedPool[3].id, id_estado_cita: 16, estado_cita: 'Confirmada', nombre_coordinador: 'Dra. Patricia Mendieta' }
     ];
   };
 

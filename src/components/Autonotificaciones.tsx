@@ -57,6 +57,7 @@ interface CitaGiris {
   identificacion: string;
   id_estado_cita: number;
   estado_cita: string;
+  nombre_coordinador?: string;
 }
 
 interface DetalleEnvio {
@@ -372,6 +373,7 @@ export function Autonotificaciones() {
         (c.codigo_cita || '').toLowerCase().includes(term) ||
         c.identificacion.toLowerCase().includes(term) ||
         c.nombre_paciente.toLowerCase().includes(term) ||
+        (c.nombre_coordinador || '').toLowerCase().includes(term) ||
         c.fecha_cita.toLowerCase().includes(term) ||
         c.estado_cita.toLowerCase().includes(term)
       );
@@ -504,8 +506,8 @@ export function Autonotificaciones() {
           profesional_nombre: selectedProf?.fullName,
           is_giris: isGiris,
           id_temp_cargue: selectedCargueId,
-          id_entidad: selectedEntidadId,
-          id_convenio: selectedConvenioId,
+          id_entidad: isGiris ? selectedEntidadId : (selectedCargueObj?.id_entidad || selectedEntidadId),
+          id_convenio: isGiris ? selectedConvenioId : (selectedCargueObj?.id_convenio || selectedConvenioId),
           id_plantilla: isGiris ? 132 : 131,
           citas: selectedCitaIds,
           pacientes: pacientesPayload
@@ -1130,6 +1132,9 @@ export function Autonotificaciones() {
                     <th className="p-3 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800" onClick={() => handleSort('identificacion')}>
                       Identificación {sortColumn === 'identificacion' ? (sortDirection === 'asc' ? '↑' : '↓') : ''}
                     </th>
+                    <th className="p-3 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800" onClick={() => handleSort('nombre_coordinador')}>
+                      Coordinadora {sortColumn === 'nombre_coordinador' ? (sortDirection === 'asc' ? '↑' : '↓') : ''}
+                    </th>
                     <th className="p-3 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800" onClick={() => handleSort('estado_cita')}>
                       Estado {sortColumn === 'estado_cita' ? (sortDirection === 'asc' ? '↑' : '↓') : ''}
                     </th>
@@ -1153,6 +1158,15 @@ export function Autonotificaciones() {
                         <td className="p-3">{c.hora_cita}</td>
                         <td className="p-3 font-medium text-slate-900 dark:text-white">{c.nombre_paciente}</td>
                         <td className="p-3">{c.identificacion}</td>
+                        <td className="p-3 text-slate-700 dark:text-slate-300 font-medium">
+                          {c.nombre_coordinador ? (
+                            <span className="inline-flex items-center gap-1">
+                              <span>👤</span> {c.nombre_coordinador}
+                            </span>
+                          ) : (
+                            <span className="text-red-500/80 dark:text-red-400/80 italic text-[11px]">Sin asignación</span>
+                          )}
+                        </td>
                         <td className="p-3 font-semibold text-emerald-600 dark:text-emerald-400">{c.estado_cita}</td>
                       </tr>
                     );

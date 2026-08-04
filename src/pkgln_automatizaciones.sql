@@ -1769,8 +1769,15 @@ CREATE OR REPLACE PACKAGE BODY pkgln_automatizaciones AS
                             'id_usuario'       VALUE c.id_usuario,
                             'nombre_paciente'  VALUE (u.nombres || ' ' || u.apellidos),
                             'identificacion'   VALUE u.identificacion,
-                            'id_estado_cita'   VALUE c.id_estado_cita,
-                            'estado_cita'      VALUE NVL(ec.estado_cita, 'Estado ' || c.id_estado_cita)
+                            'id_estado_cita'     VALUE c.id_estado_cita,
+                            'estado_cita'        VALUE NVL(ec.estado_cita, 'Estado ' || c.id_estado_cita),
+                            'nombre_coordinador' VALUE (
+                                SELECT TRIM(coord.nombres || ' ' || coord.apellidos)
+                                  FROM tkr_usuarios_cohorte uc
+                                  JOIN tkr_usuarios coord ON coord.id = uc.id_coordinador
+                                 WHERE uc.id_usuario = c.id_usuario
+                                   AND ROWNUM = 1
+                            )
                         ) RETURNING CLOB
                     ) 
                     FROM tkr_citas c
@@ -1781,7 +1788,7 @@ CREATE OR REPLACE PACKAGE BODY pkgln_automatizaciones AS
                      AND (v_id_entidad IS NULL OR conv.id_entidad_padre = v_id_entidad OR c.id_entidad = v_id_entidad)
                      AND (v_id_convenio IS NULL OR c.id_convenio = v_id_convenio OR conv.id = v_id_convenio)
                      AND (v_id_especialidad IS NULL OR c.id_especialidad = v_id_especialidad)
-                     AND (v_id_profesional IS NULL OR c.id_profesional = v_id_profesional)
+                     AND (v_id_profesional IS NULL OR c.id_profesional = v_id_profesional OR c.id_profesional = -1)
                      AND (v_fecha_hasta IS NULL OR TRUNC(c.fecha_inicio_cita) <= TO_DATE(v_fecha_hasta, 'YYYY-MM-DD'))
                      AND EXISTS (
                          SELECT 1
@@ -1869,6 +1876,7 @@ CREATE OR REPLACE PACKAGE BODY pkgln_automatizaciones AS
         v_id_cita            NUMBER;
         v_id_usuario         NUMBER;
         v_id_entidad         NUMBER;
+        v_id_convenio        NUMBER;
         v_id_especialidad    NUMBER;
         v_id_profesional     NUMBER;
 
@@ -1886,6 +1894,7 @@ CREATE OR REPLACE PACKAGE BODY pkgln_automatizaciones AS
 
         v_id_prof_json       NUMBER;
         v_id_entidad_json    NUMBER;
+        v_id_convenio_json   NUMBER;
         v_error_envio        VARCHAR2(4000);
 
         -- Colección en memoria para validar envío único por paciente y especialidad
@@ -1950,9 +1959,10 @@ CREATE OR REPLACE PACKAGE BODY pkgln_automatizaciones AS
             WHEN LOWER(NVL(JSON_VALUE(p_in_json, '$.is_giris'), 'false')) IN ('true', '1') THEN TRUE 
             ELSE FALSE 
         END;
-        v_id_plantilla    := TO_NUMBER(JSON_VALUE(p_in_json, '$.id_plantilla'));
-        v_id_prof_json    := TO_NUMBER(JSON_VALUE(p_in_json, '$.id_profesional'));
-        v_id_entidad_json := TO_NUMBER(JSON_VALUE(p_in_json, '$.id_entidad'));
+        v_id_plantilla     := TO_NUMBER(JSON_VALUE(p_in_json, '$.id_plantilla'));
+        v_id_prof_json     := TO_NUMBER(JSON_VALUE(p_in_json, '$.id_profesional'));
+        v_id_entidad_json  := TO_NUMBER(JSON_VALUE(p_in_json, '$.id_entidad'));
+        v_id_convenio_json := TO_NUMBER(JSON_VALUE(p_in_json, '$.id_convenio'));
 
         -- 1. Obtener la plantilla base de la tabla tkr_plantillas
         BEGIN
@@ -1973,6 +1983,7 @@ CREATE OR REPLACE PACKAGE BODY pkgln_automatizaciones AS
 
             -- Limpiar variables para esta iteración
             v_id_entidad              := NULL;
+            v_id_convenio             := NULL;
             v_id_especialidad         := NULL;
             v_id_profesional          := NULL;
             v_nombre_paciente         := NULL;
@@ -1989,8 +2000,8 @@ CREATE OR REPLACE PACKAGE BODY pkgln_automatizaciones AS
             -- Obtener datos de tkr_citas si se proporcionó id_cita
             IF v_id_cita IS NOT NULL THEN
                 BEGIN
-                    SELECT c.id_usuario, c.id_entidad, c.id_especialidad, c.id_profesional
-                      INTO v_id_usuario, v_id_entidad, v_id_especialidad, v_id_profesional
+                    SELECT c.id_usuario, c.id_entidad, c.id_convenio, c.id_especialidad, c.id_profesional
+                      INTO v_id_usuario, v_id_entidad, v_id_convenio, v_id_especialidad, v_id_profesional
                       FROM tkr_citas c
                      WHERE c.id = v_id_cita;
                 EXCEPTION
@@ -2001,6 +2012,7 @@ CREATE OR REPLACE PACKAGE BODY pkgln_automatizaciones AS
             -- Aplicar fallbacks desde los parámetros generales del JSON si venían nulos
             v_id_profesional := NVL(v_id_profesional, v_id_prof_json);
             v_id_entidad     := NVL(v_id_entidad, v_id_entidad_json);
+            v_id_convenio    := NVL(v_id_convenio, v_id_convenio_json);
 
             -- {{NOMBRE_PACIENTE}}, identificacion, correo y telefono (tkr_usuarios)
             IF v_id_usuario IS NOT NULL THEN
@@ -2015,12 +2027,28 @@ CREATE OR REPLACE PACKAGE BODY pkgln_automatizaciones AS
 
                 -- {{NOMBRE_COORDINADORA}} (tkr_usuarios_cohorte -> tkr_usuarios id_coordinador)
                 BEGIN
-                    SELECT TRIM(coord.nombres || ' ' || coord.apellidos)
-                      INTO v_nombre_coordinador
-                      FROM tkr_usuarios_cohorte uc
-                      JOIN tkr_usuarios coord ON coord.id = uc.id_coordinador
-                     WHERE uc.id_usuario = v_id_usuario
-                       AND ROWNUM = 1;
+                    IF v_id_convenio IS NOT NULL THEN
+                        BEGIN
+                            SELECT TRIM(coord.nombres || ' ' || coord.apellidos)
+                              INTO v_nombre_coordinador
+                              FROM tkr_usuarios_cohorte uc
+                              JOIN tkr_usuarios coord ON coord.id = uc.id_coordinador
+                             WHERE uc.id_usuario = v_id_usuario
+                               AND uc.id_convenio = v_id_convenio
+                               AND ROWNUM = 1;
+                        EXCEPTION
+                            WHEN OTHERS THEN v_nombre_coordinador := NULL;
+                        END;
+                    END IF;
+
+                    IF v_nombre_coordinador IS NULL THEN
+                        SELECT TRIM(coord.nombres || ' ' || coord.apellidos)
+                          INTO v_nombre_coordinador
+                          FROM tkr_usuarios_cohorte uc
+                          JOIN tkr_usuarios coord ON coord.id = uc.id_coordinador
+                         WHERE uc.id_usuario = v_id_usuario
+                           AND ROWNUM = 1;
+                    END IF;
                 EXCEPTION
                     WHEN OTHERS THEN NULL;
                 END;
@@ -2110,6 +2138,7 @@ CREATE OR REPLACE PACKAGE BODY pkgln_automatizaciones AS
                          || v_usuario_prof
                          || '?id_usuario=' || v_id_usuario
                          || '&id_entidad=' || v_id_entidad
+                         || '&id_convenio=' || v_id_convenio
                          || '&id_especialidad=' || v_id_especialidad
                          || '&cadena=' || v_hash_cadena;
             END IF;
